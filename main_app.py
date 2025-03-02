@@ -68,6 +68,35 @@ with st.sidebar:
     )
     language_code = LANGUAGE_MAPPING[language_option]
 
+    st.markdown("---")
+    
+    # ElevenLabs Scribe 簡介
+    st.subheader("關於 ElevenLabs Scribe")
+    st.markdown("""
+    Scribe 是 ElevenLabs 最新的語音轉文字模型，具有：
+    
+    - 支援 99 種語言
+    - 業界最高辨識準確率
+    - 字詞級時間戳記
+    - 說話者辨識功能
+    - 非語音事件標記
+    
+    [了解更多](https://elevenlabs.io/blog/meet-scribe)
+    """)
+    
+    st.markdown("---")
+    
+    # 作者資訊
+    st.markdown("""
+    ### 作者資訊
+    
+    **Dr. Tseng**  
+    Endocrinologist  
+    Tungs' Taichung MetroHarbor Hospital
+    
+    📧 zinojeng@gmail.com
+    """)
+
 # 主介面
 uploaded_file = st.file_uploader(
     "上傳音訊檔案",
