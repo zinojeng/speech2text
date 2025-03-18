@@ -1,5 +1,5 @@
-import openai
-from typing import Optional, Dict, Any
+from openai import OpenAI
+from typing import Optional, Dict
 
 
 def refine_transcript(
@@ -17,11 +17,11 @@ def refine_transcript(
         model: 使用的模型名稱
         temperature: 創意程度 (0.0-1.0)
     """
-    openai.api_key = api_key
+    client = OpenAI(api_key=api_key)
     
     try:
         # 第一步：修正並轉換為繁體中文
-        correction_response = openai.ChatCompletion.create(
+        correction_response = client.chat.completions.create(
             model=model,
             temperature=temperature,
             messages=[
@@ -42,7 +42,7 @@ def refine_transcript(
         corrected_text = correction_response.choices[0].message.content
         
         # 第二步：結構化整理
-        summary_response = openai.ChatCompletion.create(
+        summary_response = client.chat.completions.create(
             model=model,
             temperature=temperature,
             messages=[
@@ -77,15 +77,16 @@ def refine_transcript(
         print(f"文字優化失敗：{str(e)}")
         return None
 
+
 def convert_to_traditional_chinese(
     text: str,
     api_key: str,
     model: str = "o3-mini"
 ) -> str:
     """將文字轉換為繁體中文"""
-    openai.api_key = api_key
+    client = OpenAI(api_key=api_key)
     
-    response = openai.ChatCompletion.create(
+    response = client.chat.completions.create(
         model=model,
         temperature=0.1,  # 使用較低的溫度以確保準確轉換
         messages=[

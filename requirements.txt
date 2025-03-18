@@ -1,13 +1,14 @@
 # Core dependencies
+elevenlabs>=1.0.0
 openai>=1.0.0
 streamlit>=1.0.0
-requests>=2.31.0
 python-dotenv>=1.0.0
+requests>=2.31.0
 
 # Audio processing
 pydub>=0.25.1
 ffmpeg-python>=0.2.0
 
-# Utilities
+# Networking and utilities
 urllib3>=2.0.0
 typing-extensions>=4.7.0 
