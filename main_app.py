@@ -266,7 +266,7 @@ def main():
             # 選擇轉錄服務
             transcription_service = st.selectbox(
                 "選擇轉錄服務",
-                ["Whisper", "ElevenLabs", "OpenAI 2025 New"],
+                ["OpenAI 2025 New", "Whisper", "ElevenLabs"],
                 index=0,
                 help="選擇要使用的語音轉文字服務"
             )
@@ -335,7 +335,7 @@ def main():
             if transcription_service == "OpenAI 2025 New":
                 openai_model = st.selectbox(
                     "選擇 OpenAI 轉錄模型",
-                    ["gpt-4o-transcribe", "gpt-4o-mini-transcribe"],
+                    ["gpt-4o-mini-transcribe", "gpt-4o-transcribe"],
                     index=0,
                     help="選擇要使用的 OpenAI 轉錄模型"
                 )
@@ -381,12 +381,16 @@ def main():
             # 選擇優化服務
             optimization_service = st.selectbox(
                 "選擇優化服務",
-                ["OpenAI", "Gemini"],
+                ["Gemini", "OpenAI"],
                 help="選擇要使用的文字優化服務"
             )
             
             # 顯示服務說明
             st.markdown(OPTIMIZATION_SERVICE_INFO[optimization_service])
+            
+            # 顯示 Gemini 模型資訊
+            if optimization_service == "Gemini":
+                st.info("使用 Gemini 2.5 Pro Experimental 模型進行優化")
             
             # Gemini API 金鑰（如果選擇 Gemini）
             gemini_api_key = None
@@ -508,6 +512,7 @@ def main():
                                 result = transcribe_audio_elevenlabs(
                                     api_key=elevenlabs_api_key,
                                     file_path=segment_path,
+                                    language_code="zh-TW",  # 指定繁體中文
                                     diarize=enable_diarization
                                 )
                             elif transcription_service == "OpenAI 2025 New":
@@ -544,6 +549,7 @@ def main():
                             result = transcribe_audio_elevenlabs(
                                 api_key=elevenlabs_api_key,
                                 file_path=temp_path,
+                                language_code="zh-TW",  # 指定繁體中文
                                 diarize=enable_diarization
                             )
                         elif transcription_service == "OpenAI 2025 New":
