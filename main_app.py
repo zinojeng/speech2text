@@ -517,16 +517,42 @@ def main():
                                 )
                             elif transcription_service == "OpenAI 2025 New":
                                 with open(segment_path, "rb") as audio_file:
-                                    response = (
-                                        openai_client.audio
-                                        .transcriptions
-                                        .create(
-                                            model=openai_model,
-                                            file=audio_file,
-                                            language=language_code
+                                    try:
+                                        response = (
+                                            openai_client.audio
+                                            .transcriptions
+                                            .create(
+                                                model=openai_model,
+                                                file=audio_file,
+                                                language=language_code
+                                            )
                                         )
-                                    )
-                                    result = {"text": response.text}
+                                        result = {"text": response.text}
+                                    except Exception as e:
+                                        if "longer than 1500 seconds" in str(e):
+                                            # 如果檔案超過 1500 秒，進一步分割
+                                            sub_segments = split_large_audio(segment_path, max_duration_seconds=1400)
+                                            if not sub_segments:
+                                                st.error(f"分割片段 {i+1} 失敗")
+                                                continue
+                                            
+                                            sub_transcript = ""
+                                            for sub_segment in sub_segments:
+                                                with open(sub_segment, "rb") as sub_audio:
+                                                    sub_response = (
+                                                        openai_client.audio
+                                                        .transcriptions
+                                                        .create(
+                                                            model=openai_model,
+                                                            file=sub_audio,
+                                                            language=language_code
+                                                        )
+                                                    )
+                                                    sub_transcript += sub_response.text + "\n"
+                                                os.remove(sub_segment)
+                                            result = {"text": sub_transcript}
+                                        else:
+                                            raise e
                             
                             if result:
                                 full_transcript += result["text"] + "\n"

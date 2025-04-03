@@ -56,12 +56,16 @@ def check_file_size(file_path: str, max_size_mb: int = MAX_FILE_SIZE_MB) -> bool
     file_size_mb = os.path.getsize(file_path) / (1024 * 1024)
     return file_size_mb > max_size_mb
 
-def split_large_audio(file_path: str) -> Optional[List[str]]:
+def split_large_audio(
+    file_path: str,
+    max_duration_seconds: Optional[int] = None
+) -> Optional[List[str]]:
     """
     將大型音訊檔案分割成較小的片段
     
     Args:
         file_path: 音訊檔案路徑
+        max_duration_seconds: 每個片段的最大時長（秒），如果未指定則使用檔案大小來判斷
         
     Returns:
         分割後的檔案路徑列表，如果失敗則返回 None
@@ -70,14 +74,19 @@ def split_large_audio(file_path: str) -> Optional[List[str]]:
         # 載入音訊檔案
         audio = AudioSegment.from_file(file_path)
         
-        # 如果檔案小於限制，直接返回原始檔案路徑
-        if not check_file_size(file_path):
-            return [file_path]
+        # 如果指定了最大時長，使用時長來分割
+        if max_duration_seconds:
+            segment_length = max_duration_seconds * 1000  # 轉換為毫秒
+        else:
+            # 如果檔案小於限制，直接返回原始檔案路徑
+            if not check_file_size(file_path):
+                return [file_path]
+            segment_length = SEGMENT_LENGTH_MS
         
         # 分割音訊
         segments = []
-        for i, start in enumerate(range(0, len(audio), SEGMENT_LENGTH_MS)):
-            end = start + SEGMENT_LENGTH_MS
+        for i, start in enumerate(range(0, len(audio), segment_length)):
+            end = start + segment_length
             segment = audio[start:end]
             
             # 儲存分割片段
