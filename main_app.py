@@ -79,25 +79,12 @@ TRANSCRIPTION_SERVICE_INFO = {
     - 支援 99 種語言
     - 提供說話者辨識功能
     """,
-    "OpenAI-New": """
-    ### OpenAI 最新模型 (2024年更新)
-    #### gpt-4o-transcribe
-    - 最新的高精度模型
-    - 更好的多語言支援
-    - 更準確的標點符號處理
-    - 更好的上下文理解
-    
-    #### gpt-4o-mini-transcribe
-    - 輕量級但高效能
-    - 更快的處理速度
-    - 適合一般用途
-    - 性價比更高
-    
-    兩種模型都支援：
+    "OpenAI 2025 New": """
+    ### OpenAI 2025 全新模型
+    - gpt-4o-transcribe：高精度、多語言支援
+    - gpt-4o-mini-transcribe：輕量快速、性價比高
     - 自動語言檢測
-    - 即時轉錄
-    - 更好的噪音處理
-    - 更準確的中文轉錄
+    - 更好的中文轉錄效果
     """
 }
 
@@ -263,122 +250,160 @@ def main():
         st.session_state.output_tokens = 0
     if "total_tokens" not in st.session_state:
         st.session_state.total_tokens = 0
+    if "optimized_text" not in st.session_state:
+        st.session_state.optimized_text = None
+    if "summary_text" not in st.session_state:
+        st.session_state.summary_text = None
 
     with st.sidebar:
         st.header("設定")
         
-        # 選擇轉錄服務
-        transcription_service = st.selectbox(
-            "選擇轉錄服務",
-            ["Whisper", "ElevenLabs", "OpenAI-New"],
-            index=0,
-            help="選擇要使用的語音轉文字服務"
-        )
+        # 分成兩個標籤頁：轉錄設定和優化設定
+        tab1, tab2 = st.tabs(["🎙️ 轉錄設定", "✨ 優化設定"])
         
-        # 顯示服務說明
-        st.markdown(TRANSCRIPTION_SERVICE_INFO[transcription_service])
-        
-        # Whisper 相關設定
-        if transcription_service == "Whisper":
-            whisper_model = st.selectbox(
-                "選擇 Whisper 模型",
-                options=["tiny", "base", "small", "medium", "large"],
-                index=2
-            )
-            st.session_state["whisper_model"] = whisper_model
-            st.caption(get_model_description(whisper_model))
-            
-            # 語言設定
-            language_mode = st.radio(
-                "語言設定",
-                options=["自動偵測", "指定語言", "混合語言"],
-                help="選擇音訊的語言處理模式"
+        # 轉錄設定標籤頁
+        with tab1:
+            # 選擇轉錄服務
+            transcription_service = st.selectbox(
+                "選擇轉錄服務",
+                ["Whisper", "ElevenLabs", "OpenAI 2025 New"],
+                index=0,
+                help="選擇要使用的語音轉文字服務"
             )
             
-            if language_mode == "指定語言":
-                languages = {
-                    "中文 (繁體/簡體)": "zh",
-                    "英文": "en",
-                    "日文": "ja",
-                    "韓文": "ko",
-                    "其他": "custom"
-                }
+            # 顯示服務說明
+            st.markdown(TRANSCRIPTION_SERVICE_INFO[transcription_service])
+            
+            # Whisper 相關設定
+            if transcription_service == "Whisper":
+                whisper_model = st.selectbox(
+                    "選擇 Whisper 模型",
+                    options=["tiny", "base", "small", "medium", "large"],
+                    index=2
+                )
+                st.session_state["whisper_model"] = whisper_model
+                st.caption(get_model_description(whisper_model))
                 
-                selected_lang = st.selectbox(
-                    "選擇語言",
-                    options=list(languages.keys())
+                # 語言設定
+                language_mode = st.radio(
+                    "語言設定",
+                    options=["自動偵測", "指定語言", "混合語言"],
+                    help="選擇音訊的語言處理模式"
                 )
                 
-                if selected_lang == "其他":
-                    custom_lang = st.text_input(
-                        "輸入語言代碼",
-                        placeholder="例如：fr 代表法文",
-                        help="請輸入 ISO 639-1 語言代碼"
+                if language_mode == "指定語言":
+                    languages = {
+                        "中文 (繁體/簡體)": "zh",
+                        "英文": "en",
+                        "日文": "ja",
+                        "韓文": "ko",
+                        "其他": "custom"
+                    }
+                    
+                    selected_lang = st.selectbox(
+                        "選擇語言",
+                        options=list(languages.keys())
                     )
-                    language_code = custom_lang if custom_lang else None
+                    
+                    if selected_lang == "其他":
+                        custom_lang = st.text_input(
+                            "輸入語言代碼",
+                            placeholder="例如：fr 代表法文",
+                            help="請輸入 ISO 639-1 語言代碼"
+                        )
+                        language_code = custom_lang if custom_lang else None
+                    else:
+                        language_code = languages[selected_lang]
                 else:
-                    language_code = languages[selected_lang]
-            else:
-                language_code = None
-        
-        # ElevenLabs 相關設定
-        elevenlabs_api_key = None
-        if transcription_service == "ElevenLabs":
-            elevenlabs_api_key = st.text_input(
-                "ElevenLabs API 金鑰",
+                    language_code = None
+            
+            # ElevenLabs 相關設定
+            elevenlabs_api_key = None
+            if transcription_service == "ElevenLabs":
+                elevenlabs_api_key = st.text_input(
+                    "ElevenLabs API 金鑰",
+                    type="password"
+                )
+            
+            # OpenAI API 金鑰
+            openai_api_key = st.text_input(
+                "OpenAI API 金鑰",
                 type="password"
             )
-        
-        # OpenAI API 金鑰
-        openai_api_key = st.text_input(
-            "OpenAI API 金鑰",
-            type="password"
-        )
-        
-        # OpenAI 新模型相關設定
-        if transcription_service == "OpenAI-New":
-            openai_model = st.selectbox(
-                "選擇 OpenAI 轉錄模型",
-                ["gpt-4o-transcribe", "gpt-4o-mini-transcribe"],
-                index=0,
-                help="選擇要使用的 OpenAI 轉錄模型"
-            )
             
-            # 語言設定
-            language_mode = st.radio(
-                "語言設定",
-                options=["自動偵測", "指定語言"],
-                help="選擇音訊的語言處理模式"
-            )
-            
-            if language_mode == "指定語言":
-                languages = {
-                    "中文 (繁體/簡體)": "zh",
-                    "英文": "en",
-                    "日文": "ja",
-                    "韓文": "ko",
-                    "其他": "custom"
-                }
-                
-                selected_lang = st.selectbox(
-                    "選擇語言",
-                    options=list(languages.keys())
+            # OpenAI 新模型相關設定
+            if transcription_service == "OpenAI 2025 New":
+                openai_model = st.selectbox(
+                    "選擇 OpenAI 轉錄模型",
+                    ["gpt-4o-transcribe", "gpt-4o-mini-transcribe"],
+                    index=0,
+                    help="選擇要使用的 OpenAI 轉錄模型"
                 )
                 
-                if selected_lang == "其他":
-                    custom_lang = st.text_input(
-                        "輸入語言代碼",
-                        placeholder="例如：fr 代表法文",
-                        help="請輸入 ISO 639-1 語言代碼"
+                # 語言設定
+                language_mode = st.radio(
+                    "語言設定",
+                    options=["自動偵測", "指定語言"],
+                    help="選擇音訊的語言處理模式"
+                )
+                
+                if language_mode == "指定語言":
+                    languages = {
+                        "中文 (繁體/簡體)": "zh",
+                        "英文": "en",
+                        "日文": "ja",
+                        "韓文": "ko",
+                        "其他": "custom"
+                    }
+                    
+                    selected_lang = st.selectbox(
+                        "選擇語言",
+                        options=list(languages.keys())
                     )
-                    language_code = custom_lang if custom_lang else None
+                    
+                    if selected_lang == "其他":
+                        custom_lang = st.text_input(
+                            "輸入語言代碼",
+                            placeholder="例如：fr 代表法文",
+                            help="請輸入 ISO 639-1 語言代碼"
+                        )
+                        language_code = custom_lang if custom_lang else None
+                    else:
+                        language_code = languages[selected_lang]
                 else:
-                    language_code = languages[selected_lang]
-            else:
-                language_code = None
+                    language_code = None
 
-        # 其他設定
-        enable_diarization = st.checkbox("啟用說話者辨識", value=False)
+            # 其他設定
+            enable_diarization = st.checkbox("啟用說話者辨識", value=False)
+        
+        # 優化設定標籤頁
+        with tab2:
+            # 選擇優化服務
+            optimization_service = st.selectbox(
+                "選擇優化服務",
+                ["OpenAI", "Gemini"],
+                help="選擇要使用的文字優化服務"
+            )
+            
+            # 顯示服務說明
+            st.markdown(OPTIMIZATION_SERVICE_INFO[optimization_service])
+            
+            # Gemini API 金鑰（如果選擇 Gemini）
+            gemini_api_key = None
+            if optimization_service == "Gemini":
+                gemini_api_key = st.text_input(
+                    "Google API 金鑰",
+                    type="password"
+                )
+            
+            # 優化設定
+            temperature = st.slider(
+                "創意程度",
+                0.0,
+                1.0,
+                0.5,
+                help="較高的值會產生更有創意的結果，較低的值會產生更保守的結果"
+            )
         
         # 作者資訊
         st.markdown("---")
@@ -403,7 +428,39 @@ def main():
         type=["mp3", "wav", "ogg", "m4a"]
     )
     
-    if uploaded_file and st.button("轉錄音訊"):
+    # 只顯示轉錄按鈕
+    transcribe_button = st.button("🎙️ 轉錄音訊", use_container_width=True)
+    
+    # 顯示轉錄結果（如果有的話）
+    if st.session_state.transcribed_text:
+        st.subheader("轉錄結果")
+        
+        # 顯示轉錄文字
+        st.text_area(
+            "轉錄文字",
+            st.session_state.transcribed_text,
+            height=200
+        )
+        
+        # 下載按鈕
+        st.markdown("### 下載選項")
+        st.download_button(
+            label="📥 下載轉錄文字",
+            data=st.session_state.transcribed_text,
+            file_name="transcription.txt",
+            mime="text/plain",
+            help="下載轉錄後的文字檔案",
+            use_container_width=True,
+            key="download_transcription"
+        )
+        
+        # 只在有轉錄文字時顯示優化按鈕
+        optimize_button = st.button("✨ 優化文字", use_container_width=True)
+    else:
+        optimize_button = False
+    
+    # 處理轉錄
+    if uploaded_file and transcribe_button:
         if not openai_api_key:
             st.error("請提供 OpenAI API 金鑰")
             return
@@ -418,7 +475,7 @@ def main():
                 full_transcript = ""
                 
                 # 初始化 OpenAI 客戶端（如果需要）
-                if transcription_service == "OpenAI-New":
+                if transcription_service == "OpenAI 2025 New":
                     openai_client = OpenAI(api_key=openai_api_key)
                 
                 # 處理上傳的檔案
@@ -453,7 +510,7 @@ def main():
                                     file_path=segment_path,
                                     diarize=enable_diarization
                                 )
-                            elif transcription_service == "OpenAI-New":
+                            elif transcription_service == "OpenAI 2025 New":
                                 with open(segment_path, "rb") as audio_file:
                                     response = (
                                         openai_client.audio
@@ -489,7 +546,7 @@ def main():
                                 file_path=temp_path,
                                 diarize=enable_diarization
                             )
-                        elif transcription_service == "OpenAI-New":
+                        elif transcription_service == "OpenAI 2025 New":
                             with open(temp_path, "rb") as audio_file:
                                 response = (
                                     openai_client.audio
@@ -512,12 +569,7 @@ def main():
                 # 處理轉錄結果
                 if full_transcript:
                     st.session_state.transcribed_text = full_transcript
-                    st.subheader("轉錄結果")
-                    st.text_area(
-                        "原始轉錄文字",
-                        full_transcript,
-                        height=200
-                    )
+                    st.rerun()  # 使用新的 rerun 方法
                 else:
                     st.error("轉錄失敗")
                     
@@ -525,123 +577,136 @@ def main():
             st.error(f"處理失敗：{str(e)}")
             logger.error(f"處理失敗：{str(e)}")
     
-    # 文字優化部分
-    if st.session_state.transcribed_text:
-        st.markdown("---")
-        st.header("文字優化")
+    # 處理優化
+    if st.session_state.transcribed_text and optimize_button:
+        try:
+            with st.spinner("優化中..."):
+                if optimization_service == "OpenAI":
+                    if not openai_api_key:
+                        st.error("請提供 OpenAI API 金鑰")
+                        return
+                        
+                    refined = refine_transcript(
+                        raw_text=st.session_state.transcribed_text,
+                        api_key=openai_api_key,
+                        model="gpt-4o-mini",
+                        temperature=temperature,
+                        context=context_prompt
+                    )
+                else:  # Gemini
+                    if not gemini_api_key:
+                        st.error("請提供 Google API 金鑰")
+                        return
+                        
+                    refined = refine_transcript_gemini(
+                        text=st.session_state.transcribed_text,
+                        api_key=gemini_api_key,
+                        temperature=temperature,
+                        context=context_prompt
+                    )
+                
+                if refined:
+                    # 儲存優化結果到 session state
+                    st.session_state.optimized_text = refined["corrected"]
+                    st.session_state.summary_text = refined["summary"]
+                    
+                    # 組合完整結果文字（純文字格式）
+                    st.session_state.full_result = f"""優化後文字：
+{refined["corrected"]}
+
+重點摘要：
+{refined["summary"]}"""
+
+                    # Markdown 格式的結果（保留 Markdown 標記）
+                    st.session_state.markdown_result = f"""# 優化結果
+
+## 優化後文字
+{refined["corrected"]}
+
+## 重點摘要
+{refined["summary"]}"""
+                    
+                    # 更新 token 使用統計
+                    current_usage = refined.get("usage", {})
+                    st.session_state.input_tokens = current_usage.get(
+                        "total_input_tokens",
+                        0
+                    )
+                    st.session_state.output_tokens = current_usage.get(
+                        "total_output_tokens",
+                        0
+                    )
+                    st.session_state.total_tokens = (
+                        st.session_state.input_tokens +
+                        st.session_state.output_tokens
+                    )
+                else:
+                    st.error("文字優化失敗")
+        except Exception as e:
+            st.error(f"優化失敗：{str(e)}")
+            logger.error(f"優化失敗：{str(e)}")
+
+    # 顯示優化結果（如果有的話）
+    if hasattr(st.session_state, 'optimized_text') and st.session_state.optimized_text:
+        st.subheader("優化結果")
         
-        # 選擇優化服務
-        optimization_service = st.selectbox(
-            "選擇優化服務",
-            ["OpenAI", "Gemini"],
-            help="選擇要使用的文字優化服務"
+        # 顯示優化結果
+        st.text_area(
+            "完整優化結果",
+            st.session_state.full_result,
+            height=500
         )
         
-        # 顯示服務說明
-        st.markdown(OPTIMIZATION_SERVICE_INFO[optimization_service])
+        # 下載按鈕區域
+        st.markdown("### 下載選項")
+        col1, col2 = st.columns(2)
         
-        # Gemini API 金鑰（如果選擇 Gemini）
-        gemini_api_key = None
-        if optimization_service == "Gemini":
-            gemini_api_key = st.text_input(
-                "Google API 金鑰",
-                type="password"
+        with col1:
+            st.download_button(
+                label="📥 下載純文字格式",
+                data=st.session_state.full_result,  # 已經是純文字格式，不需要額外處理
+                file_name="optimized_result.txt",
+                mime="text/plain",
+                help="下載純文字格式的完整結果（包含優化結果和摘要）",
+                use_container_width=True,
+                key="download_optimized_txt"
             )
         
-        # 優化設定
-        temperature = st.slider(
-            "創意程度",
-            0.0,
-            1.0,
-            0.5,
-            help="較高的值會產生更有創意的結果，較低的值會產生更保守的結果"
-        )
+        with col2:
+            st.download_button(
+                label="📥 下載 Markdown 格式",
+                data=st.session_state.markdown_result,
+                file_name="optimized_result.md",
+                mime="text/markdown",
+                help="下載 Markdown 格式的完整結果（包含優化結果和摘要）",
+                use_container_width=True,
+                key="download_optimized_md"
+            )
         
-        if st.button("優化文字"):
-            try:
-                with st.spinner("優化中..."):
-                    if optimization_service == "OpenAI":
-                        if not openai_api_key:
-                            st.error("請提供 OpenAI API 金鑰")
-                            return
-                            
-                        refined = refine_transcript(
-                            raw_text=st.session_state.transcribed_text,
-                            api_key=openai_api_key,
-                            model="gpt-4o-mini",  # 使用較輕量的模型
-                            temperature=temperature,
-                            context=context_prompt
-                        )
-                    else:  # Gemini
-                        if not gemini_api_key:
-                            st.error("請提供 Google API 金鑰")
-                            return
-                            
-                        refined = refine_transcript_gemini(
-                            text=st.session_state.transcribed_text,
-                            api_key=gemini_api_key,
-                            temperature=temperature,
-                            context=context_prompt
-                        )
-                    
-                    if refined:
-                        st.subheader("優化結果")
-                        st.text_area(
-                            "優化後的文字",
-                            refined["corrected"],
-                            height=200
-                        )
-                        st.subheader("文字摘要")
-                        st.text_area(
-                            "摘要",
-                            refined["summary"],
-                            height=200
-                        )
-                        
-                        # 更新 token 使用統計
-                        current_usage = refined.get("usage", {})
-                        st.session_state.input_tokens = current_usage.get(
-                            "total_input_tokens",
-                            0
-                        )
-                        st.session_state.output_tokens = current_usage.get(
-                            "total_output_tokens",
-                            0
-                        )
-                        st.session_state.total_tokens = (
-                            st.session_state.input_tokens +
-                            st.session_state.output_tokens
-                        )
-                        
-                        # 顯示費用統計
-                        if optimization_service == "OpenAI":
-                            tokens_display = st.session_state.total_tokens
-                            st.markdown(f"總 Tokens: **{tokens_display:,}**")
-                            
-                            # 計算費用
-                            cost_result = calculate_cost(
-                                st.session_state.input_tokens,
-                                st.session_state.output_tokens,
-                                "gpt-4o-mini",
-                                is_cached=False
-                            )
-                            
-                            st.markdown(f"總費用: **NT$ {cost_result[1]:.2f}**")
-                            
-                            # 顯示詳細成本資訊
-                            display_cost_info(
-                                st.session_state.input_tokens,
-                                st.session_state.output_tokens,
-                                "gpt-4o-mini",
-                                is_cached=False
-                            )
-                        else:
-                            st.info("Gemini API 使用量暫不計費")
-                    else:
-                        st.error("文字優化失敗")
-            except Exception as e:
-                st.error(f"優化失敗：{str(e)}")
-                logger.error(f"優化失敗：{str(e)}")
+        # 顯示費用統計（如果有的話）
+        if optimization_service == "OpenAI":
+            tokens_display = st.session_state.total_tokens
+            st.markdown(f"總 Tokens: **{tokens_display:,}**")
+            
+            # 計算費用
+            cost_result = calculate_cost(
+                st.session_state.input_tokens,
+                st.session_state.output_tokens,
+                "gpt-4o-mini",
+                is_cached=False
+            )
+            
+            st.markdown(f"總費用: **NT$ {cost_result[1]:.2f}**")
+            
+            # 顯示詳細成本資訊
+            display_cost_info(
+                st.session_state.input_tokens,
+                st.session_state.output_tokens,
+                "gpt-4o-mini",
+                is_cached=False
+            )
+        else:
+            st.info("Gemini API 使用量暫不計費")
 
 
 if __name__ == "__main__":
