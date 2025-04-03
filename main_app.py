@@ -512,7 +512,7 @@ def main():
                                 result = transcribe_audio_elevenlabs(
                                     api_key=elevenlabs_api_key,
                                     file_path=segment_path,
-                                    language_code="zh-TW",  # 指定繁體中文
+                                    language_code="zho",  # 指定中文
                                     diarize=enable_diarization
                                 )
                             elif transcription_service == "OpenAI 2025 New":
@@ -549,7 +549,7 @@ def main():
                             result = transcribe_audio_elevenlabs(
                                 api_key=elevenlabs_api_key,
                                 file_path=temp_path,
-                                language_code="zh-TW",  # 指定繁體中文
+                                language_code="zho",  # 指定中文
                                 diarize=enable_diarization
                             )
                         elif transcription_service == "OpenAI 2025 New":
