@@ -125,20 +125,104 @@ def refine_transcript_gemini(text, api_key, temperature=0.5, context=""):
         
         # 準備提示詞
         prompt = f"""
-        請協助優化以下文字的格式和內容。需要：
-        1. 修正標點符號和格式
-        2. 保持原意的情況下讓文字更通順
-        3. 製作重點摘要
-        
-        上下文資訊：
+        請將以下文字優化為一份結構完整、格式豐富的會議記錄或講稿草稿。
+        無論輸入文字是簡體或繁體中文，請務必將所有輸出轉換為繁體中文。
+
+        # 任務要求
+        1. **基本要求**
+           - 將所有文字轉換為繁體中文
+           - 保持原意的情況下讓文字更通順、專業
+           - 製作重點摘要（300字以內）
+
+        2. **格式要求**（請參考以下範例格式）
+           - 使用 `---` 作為主要分隔線
+           - 使用 `# ## ###` 等標題層級區分主題
+           - 使用 `**粗體**` 標示：
+             * 標題（如：**標題：**）
+             * 講者（如：**[講者]:**）
+             * 關鍵詞或重要概念
+           - 使用 `-` 或 `*` 製作項目清單，支援多層縮排
+           - 使用 `>` 製作引用區塊（適用於重要引述）
+           - 適當使用 `*斜體*` 強調次要重點
+
+        # 上下文資訊
         {context if context else "無特定上下文"}
-        
-        原始文字：
+
+        # 原始文字
         {text}
+
+        # 請按照以下格式回應（必須使用繁體中文）
+
+        [優化後文字]
+        ---
+
+        **(會議記錄/講稿草稿 - 詳細版)**
+
+        **標題：** [主要標題]
+
+        **日期：** [日期，若有]
+        **參與者：** [相關人員，若有]
+
+        ## 1. 背景說明
+        **主要議題：**
+        - 重點一
+          - 細節說明
+          - 補充資訊
+        - 重點二
+          - 相關數據
+          - 具體案例
+
+        **[發言者姓名/角色]:** 「重要發言內容...」
+
+        ## 2. 討論內容
+        ### 2.1 議題探討
+        **現況分析：**
+        - **目前進度：** 說明...
+        - **遇到挑戰：**
+          - 挑戰一
+          - 挑戰二
+
+        **解決方案：**
+        1. 方案一
+           - 優點：...
+           - 考量：...
+        2. 方案二
+           - 建議做法：...
+           - 所需資源：...
+
+        ### 2.2 決議事項
+        **結論：**
+        - 重要決定一
+        - 重要決定二
+
+        ## 3. 後續規劃
+        **時程安排：**
+        - 短期目標（1個月內）
+        - 中期目標（3個月內）
+        - 長期目標（6個月以上）
+
+        **待辦事項：**
+        1. 優先處理：...
+        2. 後續追蹤：...
+
+        ---
+
+        [重點摘要]
+        ## 會議重點摘要
+
+        **核心議題：**
+        1. 主要討論重點
+           - 關鍵發現
+           - 重要決議
         
-        請提供：
-        1. 優化後的完整文字
-        2. 300字以內的重點摘要
+        **執行方向：**
+        - 近期行動項目
+          - 負責單位
+          - 時程規劃
+        
+        **注意事項：**
+        - 需要特別關注的議題
+        - 潛在風險與因應措施
         """
         
         response = model.generate_content(
@@ -150,14 +234,21 @@ def refine_transcript_gemini(text, api_key, temperature=0.5, context=""):
         
         # 解析回應
         response_text = response.text
-        parts = response_text.split("重點摘要：")
         
-        if len(parts) >= 2:
-            corrected = parts[0].strip()
+        # 使用新的分隔方式解析回應
+        if "[優化後文字]" in response_text and "[重點摘要]" in response_text:
+            parts = response_text.split("[重點摘要]")
+            corrected = parts[0].split("[優化後文字]")[1].strip()
             summary = parts[1].strip()
         else:
-            corrected = response_text
-            summary = "無法生成摘要"
+            # 如果找不到標記，嘗試使用舊的分隔方式
+            parts = response_text.split("重點摘要：")
+            if len(parts) >= 2:
+                corrected = parts[0].strip()
+                summary = parts[1].strip()
+            else:
+                corrected = response_text
+                summary = "無法生成摘要"
         
         return {
             "corrected": corrected,
@@ -625,12 +716,26 @@ def main():
                     st.session_state.optimized_text = refined["corrected"]
                     st.session_state.summary_text = refined["summary"]
                     
-                    # 組合完整結果文字（純文字格式）
+                    # 移除 Markdown 標記的函數
+                    def remove_markdown(text):
+                        # 移除標題符號 (#)
+                        text = text.replace('#', '')
+                        # 移除粗體標記 (**)
+                        text = text.replace('**', '')
+                        # 移除斜體標記 (*)
+                        text = text.replace('*', '')
+                        # 移除分隔線 (---)
+                        text = text.replace('---', '')
+                        # 移除多餘的空行
+                        text = '\n'.join(line.strip() for line in text.split('\n') if line.strip())
+                        return text
+                    
+                    # 組合完整結果文字（純文字格式，移除所有 Markdown 標記）
                     st.session_state.full_result = f"""優化後文字：
-{refined["corrected"]}
+{remove_markdown(refined["corrected"])}
 
 重點摘要：
-{refined["summary"]}"""
+{remove_markdown(refined["summary"])}"""
 
                     # Markdown 格式的結果（保留 Markdown 標記）
                     st.session_state.markdown_result = f"""# 優化結果

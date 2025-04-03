@@ -1,0 +1,2 @@
+*.py linguist-language=Python
+app.py text=auto eol=lf 
