@@ -12,6 +12,7 @@ import logging
 import tempfile
 from openai import OpenAI
 import google.generativeai as genai
+from pydub import AudioSegment
 
 # 載入環境變數
 load_dotenv()
@@ -492,81 +493,31 @@ def main():
                     temp_path = temp_file.name
                 
                 try:
-                    if check_file_size(temp_path):
-                        # 檔案需要分割
+                    # 檢查音訊長度
+                    audio = AudioSegment.from_file(temp_path)
+                    duration_seconds = len(audio) / 1000
+                    
+                    if duration_seconds > 1500 and transcription_service == "OpenAI 2025 New":
+                        # 如果音訊超過 1500 秒且使用 OpenAI，直接進行時長分割
+                        audio_segments = split_large_audio(temp_path, max_duration_seconds=1400)
+                        if not audio_segments:
+                            st.error("檔案分割失敗")
+                            return
+                    elif check_file_size(temp_path):
+                        # 如果檔案太大，按檔案大小分割
                         audio_segments = split_large_audio(temp_path)
                         if not audio_segments:
                             st.error("檔案分割失敗")
                             return
-                        
-                        progress_bar = st.progress(0)
-                        for i, segment_path in enumerate(audio_segments):
-                            if transcription_service == "Whisper":
-                                result = transcribe_audio_whisper(
-                                    segment_path,
-                                    model_name=whisper_model,
-                                    language=language_code,
-                                    initial_prompt=context_prompt
-                                )
-                            elif transcription_service == "ElevenLabs":
-                                result = transcribe_audio_elevenlabs(
-                                    api_key=elevenlabs_api_key,
-                                    file_path=segment_path,
-                                    language_code="zho",  # 指定中文
-                                    diarize=enable_diarization
-                                )
-                            elif transcription_service == "OpenAI 2025 New":
-                                with open(segment_path, "rb") as audio_file:
-                                    try:
-                                        response = (
-                                            openai_client.audio
-                                            .transcriptions
-                                            .create(
-                                                model=openai_model,
-                                                file=audio_file,
-                                                language=language_code
-                                            )
-                                        )
-                                        result = {"text": response.text}
-                                    except Exception as e:
-                                        if "longer than 1500 seconds" in str(e):
-                                            # 如果檔案超過 1500 秒，進一步分割
-                                            sub_segments = split_large_audio(segment_path, max_duration_seconds=1400)
-                                            if not sub_segments:
-                                                st.error(f"分割片段 {i+1} 失敗")
-                                                continue
-                                            
-                                            sub_transcript = ""
-                                            for sub_segment in sub_segments:
-                                                with open(sub_segment, "rb") as sub_audio:
-                                                    sub_response = (
-                                                        openai_client.audio
-                                                        .transcriptions
-                                                        .create(
-                                                            model=openai_model,
-                                                            file=sub_audio,
-                                                            language=language_code
-                                                        )
-                                                    )
-                                                    sub_transcript += sub_response.text + "\n"
-                                                os.remove(sub_segment)
-                                            result = {"text": sub_transcript}
-                                        else:
-                                            raise e
-                            
-                            if result:
-                                full_transcript += result["text"] + "\n"
-                            
-                            # 更新進度
-                            progress = (i + 1) / len(audio_segments)
-                            progress_bar.progress(progress)
-                            
-                            os.remove(segment_path)
                     else:
-                        # 直接轉錄
+                        # 檔案大小和長度都在限制內，直接處理
+                        audio_segments = [temp_path]
+                    
+                    progress_bar = st.progress(0)
+                    for i, segment_path in enumerate(audio_segments):
                         if transcription_service == "Whisper":
                             result = transcribe_audio_whisper(
-                                temp_path,
+                                segment_path,
                                 model_name=whisper_model,
                                 language=language_code,
                                 initial_prompt=context_prompt
@@ -574,25 +525,57 @@ def main():
                         elif transcription_service == "ElevenLabs":
                             result = transcribe_audio_elevenlabs(
                                 api_key=elevenlabs_api_key,
-                                file_path=temp_path,
+                                file_path=segment_path,
                                 language_code="zho",  # 指定中文
                                 diarize=enable_diarization
                             )
                         elif transcription_service == "OpenAI 2025 New":
-                            with open(temp_path, "rb") as audio_file:
-                                response = (
-                                    openai_client.audio
-                                    .transcriptions
-                                    .create(
-                                        model=openai_model,
-                                        file=audio_file,
-                                        language=language_code
+                            with open(segment_path, "rb") as audio_file:
+                                try:
+                                    response = (
+                                        openai_client.audio
+                                        .transcriptions
+                                        .create(
+                                            model=openai_model,
+                                            file=audio_file,
+                                            language=language_code
+                                        )
                                     )
-                                )
-                                result = {"text": response.text}
+                                    result = {"text": response.text}
+                                except Exception as e:
+                                    if "longer than 1500 seconds" in str(e):
+                                        # 如果檔案超過 1500 秒，進一步分割
+                                        sub_segments = split_large_audio(segment_path, max_duration_seconds=1400)
+                                        if not sub_segments:
+                                            st.error(f"分割片段 {i+1} 失敗")
+                                            continue
+                                        
+                                        sub_transcript = ""
+                                        for sub_segment in sub_segments:
+                                            with open(sub_segment, "rb") as sub_audio:
+                                                sub_response = (
+                                                    openai_client.audio
+                                                    .transcriptions
+                                                    .create(
+                                                        model=openai_model,
+                                                        file=sub_audio,
+                                                        language=language_code
+                                                    )
+                                                )
+                                                sub_transcript += sub_response.text + "\n"
+                                            os.remove(sub_segment)
+                                        result = {"text": sub_transcript}
+                                    else:
+                                        raise e
                         
                         if result:
-                            full_transcript = result["text"]
+                            full_transcript += result["text"] + "\n"
+                        
+                        # 更新進度
+                        progress = (i + 1) / len(audio_segments)
+                        progress_bar.progress(progress)
+                        
+                        os.remove(segment_path)
                 finally:
                     # 確保清理臨時檔案
                     if os.path.exists(temp_path):
