@@ -1,11 +1,12 @@
 import streamlit as st
 from dotenv import load_dotenv
 import os
-from elevenlabs_stt import transcribe_audio as transcribe_audio_elevenlabs
+from elevenlabs_stt import transcribe_audio_elevenlabs
 from whisper_stt import transcribe_audio_whisper, get_available_models, get_model_description
 from transcript_refiner import refine_transcript, OPENAI_MODELS
 from utils import check_file_size, split_large_audio
 import logging
+import tempfile
 
 # 載入環境變數
 load_dotenv()
@@ -15,7 +16,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # 定義可用的 OpenAI 模型
-OPENAI_MODELS = {
+AVAILABLE_MODELS = {
     "gpt-4o": "gpt-4o",
     "gpt-4o-mini": "gpt-4o-mini",
     "o3-mini": "o3-mini",
@@ -26,27 +27,27 @@ OPENAI_MODELS = {
 MODEL_CONFIG = {
     "gpt-4o": {
         "display_name": "gpt-4o",
-        "input": 2.50,        # $2.50 per 1M tokens
-        "cached_input": 1.25, # $1.25 per 1M tokens
-        "output": 10.00       # $10.00 per 1M tokens
+        "input": 2.50,          # $2.50 per 1M tokens
+        "cached_input": 1.25,   # $1.25 per 1M tokens
+        "output": 10.00         # $10.00 per 1M tokens
     },
     "gpt-4o-mini": {
         "display_name": "gpt-4o-mini",
-        "input": 0.15,        # $0.15 per 1M tokens
-        "cached_input": 0.075,# $0.075 per 1M tokens
-        "output": 0.60        # $0.60 per 1M tokens
+        "input": 0.15,          # $0.15 per 1M tokens
+        "cached_input": 0.075,  # $0.075 per 1M tokens
+        "output": 0.60          # $0.60 per 1M tokens
     },
     "o1-mini": {
         "display_name": "o1-mini",
-        "input": 1.10,        # $1.10 per 1M tokens
-        "cached_input": 0.55, # $0.55 per 1M tokens
-        "output": 4.40        # $4.40 per 1M tokens
+        "input": 1.10,          # $1.10 per 1M tokens
+        "cached_input": 0.55,   # $0.55 per 1M tokens
+        "output": 4.40          # $4.40 per 1M tokens
     },
     "o3-mini": {
         "display_name": "o3-mini",
-        "input": 1.10,        # $1.10 per 1M tokens
-        "cached_input": 0.55, # $0.55 per 1M tokens
-        "output": 4.40        # $4.40 per 1M tokens
+        "input": 1.10,          # $1.10 per 1M tokens
+        "cached_input": 0.55,   # $0.55 per 1M tokens
+        "output": 4.40          # $4.40 per 1M tokens
     }
 }
 
@@ -268,23 +269,44 @@ def main():
                 # 初始化變數
                 full_transcript = ""
                 
-                # 檢查檔案大小
-                temp_path = f"temp_{uploaded_file.name}"
-                with open(temp_path, "wb") as f:
-                    f.write(uploaded_file.getbuffer())
+                # 處理上傳的檔案
+                with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(uploaded_file.name)[1]) as temp_file:
+                    temp_file.write(uploaded_file.getvalue())
+                    temp_path = temp_file.name
                 
-                if check_file_size(temp_path):
-                    # 檔案需要分割
-                    audio_segments = split_large_audio(temp_path)
-                    if not audio_segments:
-                        st.error("檔案分割失敗")
-                        return
-                    
-                    progress_bar = st.progress(0)
-                    for i, segment_path in enumerate(audio_segments):
+                try:
+                    if check_file_size(temp_path):
+                        # 檔案需要分割
+                        audio_segments = split_large_audio(temp_path)
+                        if not audio_segments:
+                            st.error("檔案分割失敗")
+                            return
+                        
+                        progress_bar = st.progress(0)
+                        for i, segment_path in enumerate(audio_segments):
+                            if transcription_service == "Whisper":
+                                result = transcribe_audio_whisper(
+                                    segment_path,
+                                    model_name=whisper_model,
+                                    language=language_code,
+                                    initial_prompt=context_prompt
+                                )
+                            else:
+                                result = transcribe_audio_elevenlabs(
+                                    api_key=elevenlabs_api_key,
+                                    file_path=segment_path,
+                                    diarize=enable_diarization
+                                )
+                            
+                            if result:
+                                full_transcript += result["text"] + "\n"
+                            progress_bar.progress((i + 1) / len(audio_segments))
+                            os.remove(segment_path)
+                    else:
+                        # 直接轉錄
                         if transcription_service == "Whisper":
                             result = transcribe_audio_whisper(
-                                segment_path,
+                                temp_path,
                                 model_name=whisper_model,
                                 language=language_code,
                                 initial_prompt=context_prompt
@@ -292,35 +314,16 @@ def main():
                         else:
                             result = transcribe_audio_elevenlabs(
                                 api_key=elevenlabs_api_key,
-                                file_path=segment_path,
+                                file_path=temp_path,
                                 diarize=enable_diarization
                             )
                         
                         if result:
-                            full_transcript += result["text"] + "\n"
-                        progress_bar.progress((i + 1) / len(audio_segments))
-                        os.remove(segment_path)
-                else:
-                    # 直接轉錄
-                    if transcription_service == "Whisper":
-                        result = transcribe_audio_whisper(
-                            temp_path,
-                            model_name=whisper_model,
-                            language=language_code,
-                            initial_prompt=context_prompt
-                        )
-                    else:
-                        result = transcribe_audio_elevenlabs(
-                            api_key=elevenlabs_api_key,
-                            file_path=temp_path,
-                            diarize=enable_diarization
-                        )
-                    
-                    if result:
-                        full_transcript = result["text"]
-                
-                # 清理原始暫存檔
-                os.remove(temp_path)
+                            full_transcript = result["text"]
+                finally:
+                    # 確保清理臨時檔案
+                    if os.path.exists(temp_path):
+                        os.remove(temp_path)
                 
                 # 處理轉錄結果
                 if full_transcript:

@@ -39,7 +39,7 @@ def create_retry_session():
     return session
 
 
-def transcribe_audio(
+def transcribe_audio_elevenlabs(
     api_key: str,
     file_path: str,
     language_code: Optional[str] = None,
@@ -111,7 +111,7 @@ def transcribe_audio(
                 return None
 
 # Example usage:
-# transcription = transcribe_audio(
+# transcription = transcribe_audio_elevenlabs(
 #     api_key="YOUR_API_KEY",
 #     file_path="audio.mp3",
 #     language_code="en",
