@@ -1,11 +1,7 @@
 import streamlit as st
 from dotenv import load_dotenv
 import os
-from elevenlabs_stt import transcribe_audio_elevenlabs
-from whisper_stt import (
-    transcribe_audio_whisper,
-    get_model_description
-)
+from whisper_stt import get_model_description
 from transcript_refiner import refine_transcript
 from utils import check_file_size, split_large_audio
 import logging
@@ -13,6 +9,8 @@ import tempfile
 from openai import OpenAI
 import google.generativeai as genai
 from pydub import AudioSegment
+from pydub.silence import split_on_silence, detect_nonsilent
+import time
 
 # 載入環境變數
 load_dotenv()
@@ -465,8 +463,7 @@ def main():
                 else:
                     language_code = None
 
-            # 其他設定
-            enable_diarization = st.checkbox("啟用說話者辨識", value=False)
+            # 其他設定 (已移除啟用說話者辨識設定)
         
         # 優化設定標籤頁
         with tab2:
@@ -588,89 +585,135 @@ def main():
                     audio = AudioSegment.from_file(temp_path)
                     duration_seconds = len(audio) / 1000
                     
-                    if duration_seconds > 1500 and transcription_service == "OpenAI 2025 New":
-                        # 如果音訊超過 1500 秒且使用 OpenAI，直接進行時長分割
-                        audio_segments = split_large_audio(temp_path, max_duration_seconds=1400)
-                        if not audio_segments:
-                            st.error("檔案分割失敗")
-                            return
-                    elif check_file_size(temp_path):
-                        # 如果檔案太大，按檔案大小分割
-                        audio_segments = split_large_audio(temp_path)
-                        if not audio_segments:
-                            st.error("檔案分割失敗")
-                            return
+                    if duration_seconds > 600:  # 如果音訊超過 10 分鐘
+                        st.info("音訊較長，將採用固定時間分段處理...")
+                        logger.info(
+                            "音訊檔案長度: %.2f 秒，開始固定時間分段處理",
+                            duration_seconds
+                        )
+                        
+                        # 設定分段參數
+                        MAX_SEGMENT_DURATION = 600  # 最大分段時長（秒）
+                        OVERLAP_DURATION = 30      # 重疊時長（秒）
+                        segments = []
+                        start_time = 0.0
+                        
+                        # 進行固定時間分段
+                        while start_time < duration_seconds:
+                            end_time = min(start_time + MAX_SEGMENT_DURATION, duration_seconds)
+                            
+                            # 如果不是第一段，則從前一段結尾提前開始
+                            if start_time > 0:
+                                segment_start = start_time - OVERLAP_DURATION
+                            else:
+                                segment_start = start_time
+                            
+                            # 擷取音訊片段
+                            segment = audio[int(segment_start * 1000):int(end_time * 1000)]
+                            segment_path = f"{temp_path}_segment_{len(segments)}.mp3"
+                            segment.export(segment_path, format="mp3")
+                            logger.info(
+                                "儲存分段 %d，時間範圍：%.2f - %.2f 秒",
+                                len(segments) + 1,
+                                segment_start,
+                                end_time
+                            )
+                            segments.append(segment_path)
+                            
+                            # 更新開始時間
+                            start_time = end_time
+                        
+                        audio_segments = segments
+                        logger.info(
+                            "完成分段處理，共 %d 個分段",
+                            len(segments)
+                        )
                     else:
-                        # 檔案大小和長度都在限制內，直接處理
                         audio_segments = [temp_path]
+                        logger.info("音訊長度適中，不需分段處理")
                     
                     progress_bar = st.progress(0)
+                    transcription_prompt = (
+                        context_prompt if context_prompt else None
+                    )
+                    segment_results = []
+                    
                     for i, segment_path in enumerate(audio_segments):
-                        if transcription_service == "Whisper":
-                            result = transcribe_audio_whisper(
-                                segment_path,
-                                model_name=whisper_model,
-                                language=language_code,
-                                initial_prompt=context_prompt
-                            )
-                        elif transcription_service == "ElevenLabs":
-                            result = transcribe_audio_elevenlabs(
-                                api_key=elevenlabs_api_key,
-                                file_path=segment_path,
-                                language_code="zho",  # 指定中文
-                                diarize=enable_diarization
-                            )
-                        elif transcription_service == "OpenAI 2025 New":
-                            with open(segment_path, "rb") as audio_file:
+                        if transcription_service == "OpenAI 2025 New":
+                            MAX_RETRIES = 3
+                            retry_count = 0
+                            failed = True
+                            while retry_count < MAX_RETRIES:
                                 try:
-                                    response = (
-                                        openai_client.audio
-                                        .transcriptions
-                                        .create(
-                                            model=openai_model,
-                                            file=audio_file,
-                                            language=language_code
+                                    with open(segment_path, "rb") as audio_file:  # noqa: E501
+                                        response = (
+                                            openai_client.audio
+                                            .transcriptions
+                                            .create(
+                                                model=openai_model,
+                                                file=audio_file,
+                                                language=language_code,
+                                                response_format="text",
+                                                prompt=transcription_prompt,
+                                                temperature=0.3
+                                            )
                                         )
-                                    )
-                                    result = {"text": response.text}
+                                        # 成功則添加文字結果
+                                        segment_results.append(response)
+                                        logger.info(
+                                            "成功轉錄分段 %d/%d",
+                                            i + 1,
+                                            len(audio_segments)
+                                        )
+                                        failed = False
+                                        break
                                 except Exception as e:
-                                    if "longer than 1500 seconds" in str(e):
-                                        # 如果檔案超過 1500 秒，進一步分割
-                                        sub_segments = split_large_audio(segment_path, max_duration_seconds=1400)
-                                        if not sub_segments:
-                                            st.error(f"分割片段 {i+1} 失敗")
-                                            continue
-                                        
-                                        sub_transcript = ""
-                                        for sub_segment in sub_segments:
-                                            with open(sub_segment, "rb") as sub_audio:
-                                                sub_response = (
-                                                    openai_client.audio
-                                                    .transcriptions
-                                                    .create(
-                                                        model=openai_model,
-                                                        file=sub_audio,
-                                                        language=language_code
-                                                    )
-                                                )
-                                                sub_transcript += sub_response.text + "\n"
-                                            os.remove(sub_segment)
-                                        result = {"text": sub_transcript}
+                                    retry_count += 1
+                                    error_msg = str(e)
+                                    if retry_count < MAX_RETRIES:
+                                        logger.warning(
+                                            "處理分段 %d 失敗 (重試 %d/%d)：%s",
+                                            i + 1,
+                                            retry_count,
+                                            MAX_RETRIES,
+                                            error_msg
+                                        )
+                                        time.sleep(3)
                                     else:
-                                        raise e
-                        
-                        if result:
-                            full_transcript += result["text"] + "\n"
+                                        logger.error(
+                                            "處理分段 %d 最終失敗：%s",
+                                            i + 1,
+                                            error_msg
+                                        )
+                            if failed:
+                                # 若全部嘗試都失敗，附加空字串，確保完整排序
+                                segment_results.append("")
                         
                         # 更新進度
                         progress = (i + 1) / len(audio_segments)
                         progress_bar.progress(progress)
                         
-                        os.remove(segment_path)
-                finally:
-                    # 確保清理臨時檔案
-                    if os.path.exists(temp_path):
-                        os.remove(temp_path)
+                        # 清理臨時檔案
+                        try:
+                            if segment_path != temp_path:
+                                os.remove(segment_path)
+                                logger.info(
+                                    "已清理臨時檔案：%s",
+                                    segment_path
+                                )
+                        except Exception as e:
+                            logger.error(
+                                "清理臨時檔案失敗：%s",
+                                str(e)
+                            )
+                    
+                    # 合併結果
+                    full_transcript = " ".join(segment_results)
+                    logger.info("完成所有分段的轉錄與合併")
+                
+                except Exception as e:
+                    st.error(f"處理失敗：{str(e)}")
+                    logger.error(f"處理失敗：{str(e)}")
                 
                 # 處理轉錄結果
                 if full_transcript:
@@ -727,7 +770,11 @@ def main():
                         # 移除分隔線 (---)
                         text = text.replace('---', '')
                         # 移除多餘的空行
-                        text = '\n'.join(line.strip() for line in text.split('\n') if line.strip())
+                        text = "\n".join(
+                            line.strip() 
+                            for line in text.split("\n") 
+                            if line.strip()
+                        )
                         return text
                     
                     # 組合完整結果文字（純文字格式，移除所有 Markdown 標記）
@@ -767,7 +814,8 @@ def main():
             logger.error(f"優化失敗：{str(e)}")
 
     # 顯示優化結果（如果有的話）
-    if hasattr(st.session_state, 'optimized_text') and st.session_state.optimized_text:
+    if (hasattr(st.session_state, 'optimized_text') 
+            and st.session_state.optimized_text):
         st.subheader("優化結果")
         
         # 顯示優化結果
