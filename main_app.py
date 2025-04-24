@@ -117,8 +117,6 @@ MARKITDOWN_SERVICE_INFO = """
 ### MarkItDown 文件轉換工具
 - 將各種格式的文件轉換為 Markdown
 - 支援 PDF、DOCX、PowerPoint、Excel 等格式
-- 支援網頁 URL 轉換
-- 可選用 LLM 優化圖片描述
 - 可提取關鍵詞
 """
 
@@ -378,7 +376,7 @@ def process_markdown_extraction(text, api_key, model, keyword_count):
 
 def render_markitdown_tab():
     """渲染 MarkItDown 標籤頁"""
-    st.header("文件轉換與關鍵詞提取")
+    st.header("Step 1: 文件轉換與關鍵詞提取")
     
     # MarkItDown 服務說明
     st.markdown(MARKITDOWN_SERVICE_INFO)
@@ -388,39 +386,9 @@ def render_markitdown_tab():
         st.session_state.markdown_text = None
     if "markdown_keywords" not in st.session_state:
         st.session_state.markdown_keywords = None
-    
-    # 創建兩個標籤頁：文件上傳和 URL 輸入
-    tab1, tab2 = st.tabs(["📄 文件上傳", "🔗 URL 輸入"])
-    
-    # OpenAI API 設定
-    with st.expander("OpenAI API 設定", expanded=False):
-        openai_api_key = st.text_input(
-            "OpenAI API 金鑰",
-            type="password",
-            help="用於關鍵詞提取和圖片描述優化"
-        )
-        
-        use_llm = st.checkbox(
-            "使用 LLM 處理圖片描述",
-            value=False,
-            help="啟用後將使用 OpenAI 模型為圖片生成更好的描述"
-        )
-        
-        openai_model = st.selectbox(
-            "選擇模型",
-            ["gpt-4o-mini", "gpt-4o"],
-            index=0,
-            help="用於關鍵詞提取的模型"
-        )
-        
-        keyword_count = st.number_input(
-            "關鍵詞數量",
-            min_value=5,
-            max_value=20,
-            value=10,
-            step=1,
-            help="要提取的關鍵詞數量"
-        )
+
+    # 創建兩個標籤頁：文件上傳和直接輸入
+    tab1, tab2 = st.tabs(["📄 文件上傳", "✏️ 直接輸入"])
     
     # 文件上傳標籤頁
     with tab1:
@@ -444,91 +412,65 @@ def render_markitdown_tab():
             )
             
             if convert_btn:
-                if use_llm and not openai_api_key:
-                    st.error("使用 LLM 處理圖片需要提供 OpenAI API 金鑰")
-                else:
-                    # 保存上傳的檔案
-                    success, temp_path = save_uploaded_file(uploaded_file)
-                    
-                    if success:
-                        # 轉換檔案
-                        with st.spinner("正在轉換文件..."):
-                            success, md_text, info = convert_file_to_markdown(
-                                input_path=temp_path,
-                                use_llm=use_llm,
-                                api_key=openai_api_key,
-                                model=openai_model
+                # 保存上傳的檔案
+                success, temp_path = save_uploaded_file(uploaded_file)
+                
+                if success:
+                    # 轉換檔案
+                    with st.spinner("正在轉換文件..."):
+                        success, md_text, info = convert_file_to_markdown(
+                            input_path=temp_path,
+                            use_llm=False,
+                            api_key="",
+                            model=""
+                        )
+                        
+                        # 清理臨時檔案
+                        try:
+                            os.remove(temp_path)
+                        except Exception as e:
+                            logger.error(f"清理臨時檔案失敗: {str(e)}")
+                            pass
+                        
+                        if success:
+                            st.session_state.markdown_text = md_text
+                            # 顯示轉換資訊
+                            st.success(
+                                f"轉換成功！內容長度: {len(md_text)} 字元"
                             )
-                            
-                            # 清理臨時檔案
-                            try:
-                                os.remove(temp_path)
-                            except Exception as e:
-                                logger.error(f"清理臨時檔案失敗: {str(e)}")
-                                pass
-                            
-                            if success:
-                                st.session_state.markdown_text = md_text
-                                # 顯示轉換資訊
-                                st.success(f"轉換成功！內容長度: {len(md_text)} 字元")
-                                
-                                # 自動提取關鍵詞
-                                if openai_api_key:
-                                    st.session_state.markdown_keywords = (
-                                        process_markdown_extraction(
-                                            md_text,
-                                            openai_api_key,
-                                            openai_model,
-                                            keyword_count
-                                        )
-                                    )
-                                st.rerun()
-                            else:
-                                # 顯示錯誤資訊
-                                st.error(f"轉換失敗: {info.get('error', '未知錯誤')}")
-                    else:
-                        st.error(f"處理上傳檔案時發生錯誤: {temp_path}")
-    
-    # URL 輸入標籤頁
+                            st.rerun()
+                        else:
+                            # 顯示錯誤資訊
+                            st.error(
+                                f"轉換失敗: {info.get('error', '未知錯誤')}"
+                            )
+                else:
+                    st.error(f"處理上傳檔案時發生錯誤: {temp_path}")
+
+    # 直接輸入標籤頁
     with tab2:
-        url = st.text_input(
-            "輸入網址",
-            placeholder="例如: https://www.example.com",
-            help="輸入要轉換為 Markdown 的網址"
+        user_text = st.text_area(
+            "直接輸入文字",
+            placeholder="在此輸入您的文字內容...",
+            help="直接輸入要處理的文字內容",
+            height=300
         )
         
-        if url:
+        if user_text:
             # 處理按鈕
-            convert_url_btn = st.button(
-                "🔄 轉換 URL 內容",
+            process_text_btn = st.button(
+                "✅ 處理文字內容",
                 use_container_width=True
             )
             
-            if convert_url_btn:
-                # 轉換 URL
-                with st.spinner("正在轉換網頁內容..."):
-                    success, md_text, info = convert_url_to_markdown(url)
-                    
-                    if success:
-                        st.session_state.markdown_text = md_text
-                        # 顯示轉換資訊
-                        st.success(f"轉換成功！內容長度: {len(md_text)} 字元")
-                        
-                        # 自動提取關鍵詞
-                        if openai_api_key:
-                            st.session_state.markdown_keywords = (
-                                process_markdown_extraction(
-                                    md_text,
-                                    openai_api_key,
-                                    openai_model,
-                                    keyword_count
-                                )
-                            )
-                        st.rerun()
-                    else:
-                        # 顯示錯誤資訊
-                        st.error(f"轉換失敗: {info.get('error', '未知錯誤')}")
-    
+            if process_text_btn:
+                # 儲存用戶輸入的文字
+                st.session_state.markdown_text = user_text
+                st.success(
+                    f"文字內容已處理！長度: {len(user_text)} 字元"
+                )
+                st.rerun()
+
     # 顯示轉換結果
     if st.session_state.markdown_text:
         # 創建兩個標籤頁顯示結果
@@ -556,7 +498,10 @@ def render_markitdown_tab():
             )
             
             # 添加按鈕，將 Markdown 文字傳送到文字優化功能
-            if st.button("📤 傳送至文字優化功能", use_container_width=True):
+            if st.button(
+                "📤 傳送至文字優化功能 (Step 3)", 
+                use_container_width=True
+            ):
                 st.session_state.transcribed_text = (
                     st.session_state.markdown_text
                 )
@@ -566,21 +511,24 @@ def render_markitdown_tab():
         with result_tab2:
             st.subheader("關鍵詞提取")
             
-            if not st.session_state.markdown_keywords and openai_api_key:
-                # 手動提取關鍵詞的按鈕
-                if st.button("🔍 提取關鍵詞", use_container_width=True):
-                    st.session_state.markdown_keywords = (
-                        process_markdown_extraction(
-                            st.session_state.markdown_text,
-                            openai_api_key,
-                            openai_model,
-                            keyword_count
-                        )
-                    )
-                    st.rerun()
+            # 手動輸入關鍵詞
+            user_keywords = st.text_area(
+                "請輸入關鍵詞（每行一個）",
+                placeholder="關鍵詞1\n關鍵詞2\n關鍵詞3",
+                help="請輸入關鍵詞，每個關鍵詞一行"
+            )
             
-            if not openai_api_key:
-                st.warning("請提供 OpenAI API 金鑰以啟用關鍵詞提取功能")
+            # 處理手動輸入的關鍵詞
+            if st.button("📝 確認關鍵詞", use_container_width=True):
+                if user_keywords:
+                    # 將輸入轉換為列表
+                    keywords_list = [kw.strip() for kw in user_keywords.split("\n") if kw.strip()]
+                    if keywords_list:
+                        st.session_state.markdown_keywords = keywords_list
+                        st.success(f"已添加 {len(keywords_list)} 個關鍵詞")
+                        st.rerun()
+                    else:
+                        st.warning("請至少輸入一個關鍵詞")
             
             if st.session_state.markdown_keywords:
                 # 顯示關鍵詞
@@ -600,6 +548,38 @@ def render_markitdown_tab():
                     help="下載提取的關鍵詞列表",
                     use_container_width=True
                 )
+                
+                # 添加編輯關鍵詞的功能
+                if st.button("✏️ 編輯關鍵詞", use_container_width=True):
+                    # 將關鍵詞列表顯示在文本區域中供編輯
+                    st.session_state.editing_keywords = True
+                    st.rerun()
+            
+            # 當處於編輯模式時顯示編輯界面
+            if st.session_state.get("editing_keywords", False) and st.session_state.markdown_keywords:
+                edit_keywords = st.text_area(
+                    "編輯關鍵詞（每行一個）",
+                    value="\n".join(st.session_state.markdown_keywords),
+                    height=200
+                )
+                
+                col1, col2 = st.columns(2)
+                with col1:
+                    if st.button("✅ 確認修改", use_container_width=True):
+                        # 將編輯後的文本轉換為列表
+                        edited_keywords = [kw.strip() for kw in edit_keywords.split("\n") if kw.strip()]
+                        if edited_keywords:
+                            st.session_state.markdown_keywords = edited_keywords
+                            st.session_state.editing_keywords = False
+                            st.success(f"已更新關鍵詞列表，共 {len(edited_keywords)} 個關鍵詞")
+                            st.rerun()
+                        else:
+                            st.warning("關鍵詞列表不能為空")
+                
+                with col2:
+                    if st.button("❌ 取消編輯", use_container_width=True):
+                        st.session_state.editing_keywords = False
+                        st.rerun()
 
 def main():
     """主程式函數"""
@@ -622,12 +602,22 @@ def main():
         st.session_state.markdown_text = None
     if "markdown_keywords" not in st.session_state:
         st.session_state.markdown_keywords = None
-
-    # 創建主要的功能標籤頁
-    main_tabs = st.tabs(["🎙️ 語音轉文字", "📝 文件轉換與關鍵詞", "ℹ️ 關於"])
     
-    # 語音轉文字標籤頁
+    # 設定預設API金鑰為空字串，防止程式錯誤
+    st.session_state["openai_api_key"] = ""
+    st.session_state["use_llm"] = False
+    st.session_state["openai_model"] = "gpt-4o-mini"
+    st.session_state["keyword_count"] = 10
+
+    # 創建主要的功能標籤頁，添加步驟編號
+    main_tabs = st.tabs(["📝 Step 1: 文件轉換與關鍵詞", "🎙️ Step 2: 語音轉文字", "✨ Step 3: 文字優化"])
+    
+    # 文件轉換與關鍵詞標籤頁 (Step 1)
     with main_tabs[0]:
+        render_markitdown_tab()
+    
+    # 語音轉文字標籤頁 (Step 2)
+    with main_tabs[1]:
         with st.sidebar:
             st.header("設定")
             
@@ -647,8 +637,70 @@ def main():
                 # 顯示服務說明
                 st.markdown(TRANSCRIPTION_SERVICE_INFO[transcription_service])
                 
+                # 根據選擇的服務顯示對應的API金鑰輸入框
+                if transcription_service == "OpenAI 2025 New":
+                    # OpenAI API 金鑰
+                    openai_api_key = st.text_input(
+                        "OpenAI API 金鑰",
+                        type="password",
+                        help="用於 OpenAI 的語音轉文字服務"
+                    )
+                    # 儲存到 session state
+                    st.session_state["openai_api_key"] = openai_api_key
+                    
+                    # OpenAI 新模型相關設定
+                    openai_model = st.selectbox(
+                        "選擇 OpenAI 轉錄模型",
+                        ["gpt-4o-mini-transcribe", "gpt-4o-transcribe"],
+                        index=0,
+                        help="選擇要使用的 OpenAI 轉錄模型"
+                    )
+                    
+                    # 語言設定
+                    language_mode = st.radio(
+                        "語言設定",
+                        options=["自動偵測", "指定語言"],
+                        help="選擇音訊的語言處理模式"
+                    )
+                    
+                    if language_mode == "指定語言":
+                        languages = {
+                            "中文 (繁體/簡體)": "zh",
+                            "英文": "en",
+                            "日文": "ja",
+                            "韓文": "ko",
+                            "其他": "custom"
+                        }
+                        
+                        selected_lang = st.selectbox(
+                            "選擇語言",
+                            options=list(languages.keys())
+                        )
+                        
+                        if selected_lang == "其他":
+                            custom_lang = st.text_input(
+                                "輸入語言代碼",
+                                placeholder="例如：fr 代表法文",
+                                help="請輸入 ISO 639-1 語言代碼"
+                            )
+                            language_code = custom_lang if custom_lang else None
+                        else:
+                            language_code = languages[selected_lang]
+                    else:
+                        language_code = None
+                
+                elif transcription_service == "ElevenLabs":
+                    # ElevenLabs API 金鑰
+                    elevenlabs_api_key = st.text_input(
+                        "ElevenLabs API 金鑰",
+                        type="password",
+                        help="用於 ElevenLabs 語音轉文字服務"
+                    )
+                    # 儲存到 session state
+                    st.session_state["elevenlabs_api_key"] = elevenlabs_api_key
+                
                 # Whisper 相關設定
-                if transcription_service == "Whisper":
+                elif transcription_service == "Whisper":
                     whisper_model = st.selectbox(
                         "選擇 Whisper 模型",
                         options=["tiny", "base", "small", "medium", "large"],
@@ -689,64 +741,6 @@ def main():
                             language_code = languages[selected_lang]
                     else:
                         language_code = None
-                
-                # ElevenLabs 相關設定
-                elevenlabs_api_key = None
-                if transcription_service == "ElevenLabs":
-                    elevenlabs_api_key = st.text_input(
-                        "ElevenLabs API 金鑰",
-                        type="password"
-                    )
-                
-                # OpenAI API 金鑰
-                openai_api_key = st.text_input(
-                    "OpenAI API 金鑰",
-                    type="password"
-                )
-                
-                # OpenAI 新模型相關設定
-                if transcription_service == "OpenAI 2025 New":
-                    openai_model = st.selectbox(
-                        "選擇 OpenAI 轉錄模型",
-                        ["gpt-4o-mini-transcribe", "gpt-4o-transcribe"],
-                        index=0,
-                        help="選擇要使用的 OpenAI 轉錄模型"
-                    )
-                    
-                    # 語言設定
-                    language_mode = st.radio(
-                        "語言設定",
-                        options=["自動偵測", "指定語言"],
-                        help="選擇音訊的語言處理模式"
-                    )
-                    
-                    if language_mode == "指定語言":
-                        languages = {
-                            "中文 (繁體/簡體)": "zh",
-                            "英文": "en",
-                            "日文": "ja",
-                            "韓文": "ko",
-                            "其他": "custom"
-                        }
-                        
-                        selected_lang = st.selectbox(
-                            "選擇語言",
-                            options=list(languages.keys())
-                        )
-                        
-                        if selected_lang == "其他":
-                            custom_lang = st.text_input(
-                                "輸入語言代碼",
-                                placeholder="例如：fr 代表法文",
-                                help="請輸入 ISO 639-1 語言代碼"
-                            )
-                            language_code = custom_lang if custom_lang else None
-                        else:
-                            language_code = languages[selected_lang]
-                    else:
-                        language_code = None
-
-                # 其他設定 (已移除啟用說話者辨識設定)
             
             # 優化設定標籤頁
             with tab2:
@@ -760,17 +754,28 @@ def main():
                 # 顯示服務說明
                 st.markdown(OPTIMIZATION_SERVICE_INFO[optimization_service])
                 
-                # 顯示 Gemini 模型資訊
+                # 根據選擇的服務顯示對應的API金鑰輸入框
                 if optimization_service == "Gemini":
-                    st.info("使用 Gemini 2.5 Pro Experimental 模型進行優化")
-                
-                # Gemini API 金鑰（如果選擇 Gemini）
-                gemini_api_key = None
-                if optimization_service == "Gemini":
+                    # Gemini API 金鑰
                     gemini_api_key = st.text_input(
                         "Google API 金鑰",
-                        type="password"
+                        type="password",
+                        help="用於 Gemini 模型優化文字"
                     )
+                    # 儲存到 session state
+                    st.session_state["gemini_api_key"] = gemini_api_key
+                    
+                    # 顯示 Gemini 模型資訊
+                    st.info("使用 Gemini 2.5 Pro Experimental 模型進行優化")
+                else:  # OpenAI
+                    # OpenAI API 金鑰
+                    openai_api_key = st.text_input(
+                        "OpenAI API 金鑰",
+                        type="password",
+                        help="用於 OpenAI 模型優化文字"
+                    )
+                    # 儲存到 session state
+                    st.session_state["openai_api_key"] = openai_api_key
                 
                 # 優化設定
                 temperature = st.slider(
@@ -790,13 +795,8 @@ def main():
             Tungs' Taichung MetroHarbor Hospital
             """)
 
-        # 提示詞設定
-        with st.expander("提示詞設定（選填）", expanded=False):
-            context_prompt = st.text_area(
-                "請輸入相關提示詞",
-                placeholder="例如：\n- 這是一段醫學演講\n- 包含專有名詞：糖尿病、胰島素\n- 主要討論糖尿病的治療方法",
-                help="提供音訊內容的相關資訊，可以幫助 AI 更準確地理解和轉錄內容"
-            )
+        # 語音轉文字主要內容
+        st.header("Step 2: 語音轉文字")
         
         # 上傳檔案
         uploaded_file = st.file_uploader(
@@ -830,14 +830,18 @@ def main():
                 key="download_transcription"
             )
             
-            # 只在有轉錄文字時顯示優化按鈕
-            optimize_button = st.button("✨ 優化文字", use_container_width=True)
+            # 只在有轉錄文字時顯示優化按鈕，添加 Step 3 指示
+            optimize_button = st.button("✨ 進入 Step 3: 優化文字", use_container_width=True)
         else:
             optimize_button = False
         
         # 處理轉錄
         if uploaded_file and transcribe_button:
-            if not openai_api_key:
+            # 從session state獲取API金鑰
+            openai_api_key = st.session_state.get("openai_api_key", "")
+            elevenlabs_api_key = st.session_state.get("elevenlabs_api_key", "")
+            
+            if transcription_service == "OpenAI 2025 New" and not openai_api_key:
                 st.error("請提供 OpenAI API 金鑰")
                 return
                 
@@ -883,7 +887,10 @@ def main():
                             
                             # 進行固定時間分段
                             while start_time < duration_seconds:
-                                end_time = min(start_time + MAX_SEGMENT_DURATION, duration_seconds)
+                                end_time = min(
+                                    start_time + MAX_SEGMENT_DURATION, 
+                                    duration_seconds
+                                )
                                 
                                 # 如果不是第一段，則從前一段結尾提前開始
                                 if start_time > 0:
@@ -892,7 +899,9 @@ def main():
                                     segment_start = start_time
                                 
                                 # 擷取音訊片段
-                                segment = audio[int(segment_start * 1000):int(end_time * 1000)]
+                                segment = audio[
+                                    int(segment_start * 1000):int(end_time * 1000)
+                                ]
                                 segment_path = f"{temp_path}_segment_{len(segments)}.mp3"
                                 segment.export(segment_path, format="mp3")
                                 logger.info(
@@ -916,19 +925,32 @@ def main():
                             logger.info("音訊長度適中，不需分段處理")
                         
                         progress_bar = st.progress(0)
-                        transcription_prompt = (
-                            context_prompt if context_prompt else None
-                        )
+                        # 不再使用 context_prompt，直接設置為 None
+                        transcription_prompt = None
                         segment_results = []
                         
                         for i, segment_path in enumerate(audio_segments):
-                            if transcription_service == "OpenAI 2025 New":
+                            if transcription_service == "Whisper":
+                                result = transcribe_audio_whisper(
+                                    segment_path,
+                                    model_name=whisper_model,
+                                    language=language_code,
+                                    initial_prompt=None  # 移除 context_prompt 的使用
+                                )
+                            elif transcription_service == "ElevenLabs":
+                                result = transcribe_audio_elevenlabs(
+                                    api_key=elevenlabs_api_key,
+                                    file_path=segment_path,
+                                    language_code="zho",  # 指定中文
+                                    diarize=False  # 取消啟用說話者辨識
+                                )
+                            elif transcription_service == "OpenAI 2025 New":
                                 MAX_RETRIES = 3
                                 retry_count = 0
                                 failed = True
                                 while retry_count < MAX_RETRIES:
                                     try:
-                                        with open(segment_path, "rb") as audio_file:  # noqa: E501
+                                        with open(segment_path, "rb") as audio_file:
                                             response = (
                                                 openai_client.audio
                                                 .transcriptions
@@ -1009,188 +1031,205 @@ def main():
                 st.error(f"處理失敗：{str(e)}")
                 logger.error(f"處理失敗：{str(e)}")
         
-        # 處理優化
-        if st.session_state.transcribed_text and optimize_button:
-            try:
-                with st.spinner("優化中..."):
-                    if optimization_service == "OpenAI":
-                        if not openai_api_key:
-                            st.error("請提供 OpenAI API 金鑰")
-                            return
-                            
-                        refined = refine_transcript(
-                            raw_text=st.session_state.transcribed_text,
-                            api_key=openai_api_key,
-                            model="gpt-4o-mini",
-                            temperature=temperature,
-                            context=context_prompt
-                        )
-                    else:  # Gemini
-                        if not gemini_api_key:
-                            st.error("請提供 Google API 金鑰")
-                            return
-                            
-                        refined = refine_transcript_gemini(
-                            text=st.session_state.transcribed_text,
-                            api_key=gemini_api_key,
-                            temperature=temperature,
-                            context=context_prompt
-                        )
+        # 優化標籤頁 (Step 3)
+        with main_tabs[2]:
+            st.header("Step 3: 文字優化")
+        
+            # 如果沒有待優化的文字，顯示提示
+            if not st.session_state.transcribed_text:
+                st.info("請先在 Step 1 轉換文件或 Step 2 轉錄音訊，然後再執行優化")
+                return
+
+            # 顯示優化結果（如果有的話）
+            if st.session_state.optimized_text:
+                st.subheader("優化結果")
+                
+                # 顯示優化結果
+                st.text_area(
+                    "完整優化結果",
+                    st.session_state.full_result,
+                    height=500
+                )
+                
+                # 下載按鈕區域
+                st.markdown("### 下載選項")
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    st.download_button(
+                        label="📥 下載純文字格式",
+                        data=st.session_state.full_result,  # 已經是純文字格式，不需要額外處理
+                        file_name="optimized_result.txt",
+                        mime="text/plain",
+                        help="下載純文字格式的完整結果（包含優化結果和摘要）",
+                        use_container_width=True,
+                        key="download_optimized_txt"
+                    )
+                
+                with col2:
+                    st.download_button(
+                        label="📥 下載 Markdown 格式",
+                        data=st.session_state.markdown_result,
+                        file_name="optimized_result.md",
+                        mime="text/markdown",
+                        help="下載 Markdown 格式的完整結果（包含優化結果和摘要）",
+                        use_container_width=True,
+                        key="download_optimized_md"
+                    )
+                
+                # 顯示費用統計（如果有的話）
+                if optimization_service == "OpenAI":
+                    tokens_display = st.session_state.total_tokens
+                    st.markdown(f"總 Tokens: **{tokens_display:,}**")
                     
-                    if refined:
-                        # 儲存優化結果到 session state
-                        st.session_state.optimized_text = refined["corrected"]
-                        st.session_state.summary_text = refined["summary"]
-                        
-                        # 移除 Markdown 標記的函數
-                        def remove_markdown(text):
-                            # 移除標題符號 (#)
-                            text = text.replace('#', '')
-                            # 移除粗體標記 (**)
-                            text = text.replace('**', '')
-                            # 移除斜體標記 (*)
-                            text = text.replace('*', '')
-                            # 移除分隔線 (---)
-                            text = text.replace('---', '')
-                            # 移除多餘的空行
-                            text = "\n".join(
-                                line.strip() 
-                                for line in text.split("\n") 
-                                if line.strip()
-                            )
-                            return text
-                        
-                        # 組合完整結果文字（純文字格式，移除所有 Markdown 標記）
-                        st.session_state.full_result = f"""優化後文字：
+                    # 計算費用
+                    cost_result = calculate_cost(
+                        st.session_state.input_tokens,
+                        st.session_state.output_tokens,
+                        "gpt-4o-mini",
+                        is_cached=False
+                    )
+                    
+                    st.markdown(f"總費用: **NT$ {cost_result[1]:.2f}**")
+                    
+                    # 顯示詳細成本資訊
+                    display_cost_info(
+                        st.session_state.input_tokens,
+                        st.session_state.output_tokens,
+                        "gpt-4o-mini",
+                        is_cached=False
+                    )
+                else:
+                    st.info("Gemini API 使用量暫不計費")
+            else:
+                # 如果有文字但尚未優化，顯示優化按鈕
+                st.text_area(
+                    "待優化文字",
+                    st.session_state.transcribed_text,
+                    height=300
+                )
+                
+                optimize_button = st.button("✨ 優化文字", use_container_width=True)
+                
+                # 處理優化
+                if optimize_button:
+                    try:
+                        with st.spinner("優化中..."):
+                            # 從 session state 獲取 API 金鑰
+                            openai_api_key = st.session_state.get("openai_api_key", "")
+                            gemini_api_key = st.session_state.get("gemini_api_key", "")
+                            
+                            if optimization_service == "OpenAI":
+                                if not openai_api_key:
+                                    st.error("請在側邊欄提供 OpenAI API 金鑰")
+                                    return
+                                    
+                                refined = refine_transcript(
+                                    raw_text=st.session_state.transcribed_text,
+                                    api_key=openai_api_key,
+                                    model="gpt-4o-mini",
+                                    temperature=temperature,
+                                    context=None
+                                )
+                            else:  # Gemini
+                                if not gemini_api_key:
+                                    st.error("請在側邊欄提供 Google API 金鑰")
+                                    return
+                                    
+                                refined = refine_transcript_gemini(
+                                    text=st.session_state.transcribed_text,
+                                    api_key=gemini_api_key,
+                                    temperature=temperature,
+                                    context=None
+                                )
+                            
+                            if refined:
+                                # 儲存優化結果到 session state
+                                st.session_state.optimized_text = refined["corrected"]
+                                st.session_state.summary_text = refined["summary"]
+                                
+                                # 移除 Markdown 標記的函數
+                                def remove_markdown(text):
+                                    # 移除標題符號 (#)
+                                    text = text.replace('#', '')
+                                    # 移除粗體標記 (**)
+                                    text = text.replace('**', '')
+                                    # 移除斜體標記 (*)
+                                    text = text.replace('*', '')
+                                    # 移除分隔線 (---)
+                                    text = text.replace('---', '')
+                                    # 移除多餘的空行
+                                    text = "\n".join(
+                                        line.strip() 
+                                        for line in text.split("\n") 
+                                        if line.strip()
+                                    )
+                                    return text
+                                
+                                # 組合完整結果文字（純文字格式，移除所有 Markdown 標記）
+                                st.session_state.full_result = f"""優化後文字：
 {remove_markdown(refined["corrected"])}
 
 重點摘要：
 {remove_markdown(refined["summary"])}"""
 
-                        # Markdown 格式的結果（保留 Markdown 標記）
-                        st.session_state.markdown_result = f"""# 優化結果
+                                # Markdown 格式的結果（保留 Markdown 標記）
+                                st.session_state.markdown_result = f"""# 優化結果
 
 ## 優化後文字
 {refined["corrected"]}
 
 ## 重點摘要
 {refined["summary"]}"""
-                        
-                        # 更新 token 使用統計
-                        current_usage = refined.get("usage", {})
-                        st.session_state.input_tokens = current_usage.get(
-                            "total_input_tokens",
-                            0
-                        )
-                        st.session_state.output_tokens = current_usage.get(
-                            "total_output_tokens",
-                            0
-                        )
-                        st.session_state.total_tokens = (
-                            st.session_state.input_tokens +
-                            st.session_state.output_tokens
-                        )
-                    else:
-                        st.error("文字優化失敗")
-            except Exception as e:
-                st.error(f"優化失敗：{str(e)}")
-                logger.error(f"優化失敗：{str(e)}")
+                                
+                                # 更新 token 使用統計
+                                current_usage = refined.get("usage", {})
+                                st.session_state.input_tokens = current_usage.get(
+                                    "total_input_tokens",
+                                    0
+                                )
+                                st.session_state.output_tokens = current_usage.get(
+                                    "total_output_tokens",
+                                    0
+                                )
+                                st.session_state.total_tokens = (
+                                    st.session_state.input_tokens +
+                                    st.session_state.output_tokens
+                                )
+                                
+                                st.rerun()
+                            else:
+                                st.error("文字優化失敗")
+                    except Exception as e:
+                        st.error(f"優化失敗：{str(e)}")
+                        logger.error(f"優化失敗：{str(e)}")
 
-        # 顯示優化結果（如果有的話）
-        if (hasattr(st.session_state, 'optimized_text') 
-                and st.session_state.optimized_text):
-            st.subheader("優化結果")
+    # 移除關於標籤頁的內容，改為在側邊欄顯示
+    with st.sidebar:
+        # 分隔線
+        st.markdown("---")
+        
+        # 關於資訊
+        with st.expander("ℹ️ 關於", expanded=False):
+            st.markdown("""
+            ### 音訊轉文字與文件處理系統
             
-            # 顯示優化結果
-            st.text_area(
-                "完整優化結果",
-                st.session_state.full_result,
-                height=500
-            )
+            本系統提供以下功能：
             
-            # 下載按鈕區域
-            st.markdown("### 下載選項")
-            col1, col2 = st.columns(2)
+            1. **文件轉換與關鍵詞**：將各種格式文件轉為 Markdown
+            2. **語音轉文字**：將音訊檔案轉換為文字
+            3. **文字優化**：優化轉錄文字，製作會議記錄或講稿
             
-            with col1:
-                st.download_button(
-                    label="📥 下載純文字格式",
-                    data=st.session_state.full_result,  # 已經是純文字格式，不需要額外處理
-                    file_name="optimized_result.txt",
-                    mime="text/plain",
-                    help="下載純文字格式的完整結果（包含優化結果和摘要）",
-                    use_container_width=True,
-                    key="download_optimized_txt"
-                )
+            ### 技術支援
+            * 音訊轉文字：OpenAI 模型、Whisper 模型
+            * 文字優化：GPT-4o 系列模型、Gemini 2.5 Pro
+            * 文件轉換：MarkItDown 套件
             
-            with col2:
-                st.download_button(
-                    label="📥 下載 Markdown 格式",
-                    data=st.session_state.markdown_result,
-                    file_name="optimized_result.md",
-                    mime="text/markdown",
-                    help="下載 Markdown 格式的完整結果（包含優化結果和摘要）",
-                    use_container_width=True,
-                    key="download_optimized_md"
-                )
-            
-            # 顯示費用統計（如果有的話）
-            if optimization_service == "OpenAI":
-                tokens_display = st.session_state.total_tokens
-                st.markdown(f"總 Tokens: **{tokens_display:,}**")
-                
-                # 計算費用
-                cost_result = calculate_cost(
-                    st.session_state.input_tokens,
-                    st.session_state.output_tokens,
-                    "gpt-4o-mini",
-                    is_cached=False
-                )
-                
-                st.markdown(f"總費用: **NT$ {cost_result[1]:.2f}**")
-                
-                # 顯示詳細成本資訊
-                display_cost_info(
-                    st.session_state.input_tokens,
-                    st.session_state.output_tokens,
-                    "gpt-4o-mini",
-                    is_cached=False
-                )
-            else:
-                st.info("Gemini API 使用量暫不計費")
-
-    # 文件轉換與關鍵詞標籤頁
-    with main_tabs[1]:
-        render_markitdown_tab()
-        
-    # 關於標籤頁
-    with main_tabs[2]:
-        st.header("關於")
-        st.markdown("""
-        ### 音訊轉文字與文件處理系統
-        
-        本系統提供以下功能：
-        
-        1. **音訊轉文字**：將音訊檔案轉換為文字，支援多種轉錄引擎
-        2. **文字優化**：自動優化轉錄文字，製作美觀的會議記錄或講稿
-        3. **文件轉換**：將各種格式的文件轉換為 Markdown 格式
-        4. **關鍵詞提取**：自動從文本中提取重要關鍵詞
-        
-        ### 技術支援
-        * 音訊轉文字：OpenAI 模型、Whisper 模型
-        * 文字優化：GPT-4o 系列模型、Gemini 2.5 Pro
-        * 文件轉換：MarkItDown 套件
-        
-        ### 版本資訊
-        * 版本：1.1.0
-        * 更新日期：2025-04-20
-        * 新增功能：文件轉換與關鍵詞提取
-        
-        ### 開發者
-        **Tseng Yao Hsien**  
-        Endocrinologist  
-        Tungs' Taichung MetroHarbor Hospital
-        """)
+            ### 版本資訊
+            * 版本：1.1.0
+            * 更新日期：2025-04-20
+            * 新增功能：文件轉換與關鍵詞提取
+            """)
 
 
 if __name__ == "__main__":
