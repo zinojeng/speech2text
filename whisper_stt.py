@@ -7,8 +7,9 @@
 import logging
 from typing import Optional, Dict, Any, List
 
-import torch
-import whisper
+# 延遲導入以改善啟動速度
+# import torch
+# import whisper
 
 
 # 設定日誌
@@ -37,6 +38,14 @@ def transcribe_audio_whisper(
         包含轉錄結果的字典，如果失敗則返回 None
     """
     try:
+        # 延遲導入重量級套件
+        try:
+            import torch
+            import whisper
+        except ImportError as e:
+            logger.error("缺少必要的依賴套件: %s", str(e))
+            return None
+        
         # 檢查 CUDA 是否可用
         device = "cuda" if torch.cuda.is_available() else "cpu"
         logger.info("使用設備: %s", device)
@@ -77,14 +86,16 @@ def transcribe_audio_whisper(
     except ImportError as e:
         logger.error("缺少必要的依賴: %s", str(e))
         return None
-    except torch.cuda.CudaError as e:
-        logger.error("CUDA錯誤: %s", str(e))
-        return None
     except (ValueError, RuntimeError) as e:
         logger.error("轉錄過程中發生錯誤: %s", str(e))
         return None
     except Exception as e:
-        logger.error("轉錄失敗，未預期的錯誤: %s", str(e))
+        # 處理 CUDA 錯誤和其他未預期的錯誤
+        error_msg = str(e)
+        if "cuda" in error_msg.lower():
+            logger.error("CUDA錯誤: %s", error_msg)
+        else:
+            logger.error("轉錄失敗，未預期的錯誤: %s", error_msg)
         return None
 
 

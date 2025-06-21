@@ -2,4 +2,27 @@
 __pycache__/
 *.pyc
 .DS_Store
-venv/ 
+venv/
+venv_new/
+
+# 備份檔案
+*.bak
+*.bak2
+*.broken
+*.error
+*.fixed
+*.prev
+
+# 日誌和輸出檔案
+*.log
+*.pid
+output*.txt
+output*.md
+llm_output.md
+
+# 臨時檔案
+get-pip.py
+
+# 測試檔案 (可選擇性加入版本控制)
+*_test.py
+test_*.py 
