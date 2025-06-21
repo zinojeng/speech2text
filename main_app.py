@@ -13,7 +13,8 @@ import google.generativeai as genai
 from pydub import AudioSegment
 
 # 本地模組導入
-from whisper_stt import get_model_description
+from whisper_stt import get_model_description, transcribe_audio_whisper
+from elevenlabs_stt import transcribe_audio_elevenlabs
 from transcript_refiner import refine_transcript
 from markitdown_utils import (
     convert_file_to_markdown,
@@ -1153,6 +1154,8 @@ def main():
                     ["Gemini", "OpenAI"],
                     help="選擇要使用的文字優化服務"
                 )
+                # 將選擇存儲到 session state
+                st.session_state["optimization_service"] = optimization_service
                 
                 # 顯示服務說明
                 st.markdown(OPTIMIZATION_SERVICE_INFO[optimization_service])
@@ -1222,6 +1225,8 @@ def main():
                     0.5,
                     help="較高的值會產生更有創意的結果，較低的值會產生更保守的結果"
                 )
+                # 儲存到 session state
+                st.session_state["temperature"] = temperature
             
             # 作者資訊
             st.markdown("---")
@@ -1520,6 +1525,7 @@ def main():
                     )
                 
                 # 顯示費用統計（如果有的話）
+                optimization_service = st.session_state.get("optimization_service", "OpenAI")
                 if optimization_service == "OpenAI":
                     tokens_display = st.session_state.total_tokens
                     st.markdown(f"總 Tokens: **{tokens_display:,}**")
@@ -1557,9 +1563,11 @@ def main():
                 if optimize_button:
                     try:
                         with st.spinner("優化中..."):
-                            # 從 session state 獲取 API 金鑰
+                            # 從 session state 獲取 API 金鑰和設定
                             openai_api_key = st.session_state.get("openai_api_key", "")
                             gemini_api_key = st.session_state.get("gemini_api_key", "")
+                            optimization_service = st.session_state.get("optimization_service", "OpenAI")
+                            temperature = st.session_state.get("temperature", 0.5)
                             
                             if optimization_service == "OpenAI":
                                 if not openai_api_key:

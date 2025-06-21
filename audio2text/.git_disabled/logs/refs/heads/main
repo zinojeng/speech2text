@@ -1,0 +1,5 @@
+0000000000000000000000000000000000000000 62b60c03bddb6e6469eb2b177498d3f1acec46ef zinojeng <zinojeng@gmail.com> 1742370804 +0800	clone: from https://huggingface.co/spaces/Ander1/audio2text
+62b60c03bddb6e6469eb2b177498d3f1acec46ef 0a244a2dc62d970bd6f89fec82c74ce1b2f1242f zinojeng <zinojeng@gmail.com> 1742370804 +0800	commit: Add application files
+0a244a2dc62d970bd6f89fec82c74ce1b2f1242f 43d36a53902363614f942ff2b7de0eccd87416ea zinojeng <zinojeng@gmail.com> 1742371317 +0800	commit: Fix function name in elevenlabs_stt.py
+43d36a53902363614f942ff2b7de0eccd87416ea a45aca39ae71f7aa65a1ad5d1dc66b7da85941d2 zinojeng <zinojeng@gmail.com> 1742371522 +0800	commit: Update example usage in elevenlabs_stt.py
+a45aca39ae71f7aa65a1ad5d1dc66b7da85941d2 74a6a34e7613ad5b1703b0629736671bc5ab46ec zinojeng <zinojeng@gmail.com> 1742372881 +0800	commit: Fix parameter order in transcribe_audio_elevenlabs call

@@ -27,6 +27,8 @@ def check_libreoffice_installed() -> bool:
                                   capture_output=True, text=True, timeout=10)
             return result.returncode == 0
         except (subprocess.TimeoutExpired, FileNotFoundError):
+            # 在雲端環境中可能沒有 LibreOffice
+            logger.warning("LibreOffice 未安裝，Vision API 功能將不可用")
             return False
 
 def convert_pptx_to_images(pptx_path: str, output_dir: str) -> List[str]:
