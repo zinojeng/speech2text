@@ -92,6 +92,60 @@ sudo apt install ffmpeg
 4. 嘗試轉換的檔案類型和大小
 5. 已嘗試的解決方案
 
+### 音訊處理問題
+
+如果遇到音訊處理問題，請確保已安裝 ffmpeg：
+
+```bash
+# macOS
+brew install ffmpeg
+
+# Ubuntu/Debian
+sudo apt-get install ffmpeg
+
+# Windows (使用 Chocolatey)
+choco install ffmpeg
+```
+
+### PPTX 檔案處理問題
+
+如果在處理 PPTX 檔案時遇到 PyTorch 相關錯誤：
+
+```
+Examining the path of torch.classes raised: Tried to instantiate class '__path__._path'
+```
+
+**解決方案：**
+
+1. **安裝 python-pptx 套件**（推薦）：
+   ```bash
+   pip install python-pptx
+   ```
+   系統會自動使用 python-pptx 替代方案來處理 PPTX 檔案，避免 PyTorch 錯誤。
+
+2. **重新安裝 PyTorch**：
+   ```bash
+   # 卸載現有版本
+   pip uninstall -y torch torchvision torchaudio
+   
+   # 安裝 CPU 版本
+   pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
+   ```
+
+3. **使用診斷工具**：
+   ```bash
+   python test_pptx_torch_fix.py
+   ```
+
+4. **使用替代轉換器**：
+   ```bash
+   python alternative_pptx_converter.py your_file.pptx
+   ```
+
+**注意**：此問題通常發生在 macOS 系統上，與 PyTorch 的某些內部組件衝突有關。使用 python-pptx 是最簡單且可靠的解決方案。
+
+## 其他常見問題
+
 ---
 
 **最後更新：** 2025-05-28  

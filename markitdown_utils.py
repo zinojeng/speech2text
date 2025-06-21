@@ -63,6 +63,58 @@ def convert_file_to_markdown(input_path: str,
             
         logger.info(f"正在轉換: {input_path}")
         
+        # 檢查是否為 PPTX 檔案，如果是則使用替代方法
+        if str(input_path).lower().endswith('.pptx'):
+            logger.info("偵測到 PPTX 檔案，使用替代轉換方法...")
+            try:
+                # 嘗試使用 python-pptx 直接轉換
+                from pptx import Presentation
+                
+                prs = Presentation(str(input_path))
+                text_content = []
+                slide_count = 0
+                
+                for slide_idx, slide in enumerate(prs.slides, 1):
+                    slide_count += 1
+                    text_content.append(f"\n## 投影片 {slide_idx}\n")
+                    
+                    for shape in slide.shapes:
+                        if hasattr(shape, "text") and shape.text:
+                            text_content.append(shape.text.strip())
+                            text_content.append("")
+                        
+                        if shape.has_table:
+                            text_content.append("\n### 表格\n")
+                            table = shape.table
+                            for row_idx, row in enumerate(table.rows):
+                                row_text = []
+                                for cell in row.cells:
+                                    cell_text = cell.text.strip().replace("|", "\\|")
+                                    row_text.append(cell_text)
+                                text_content.append("| " + " | ".join(row_text) + " |")
+                                if row_idx == 0:
+                                    separator = "|" + "|".join([" --- " for _ in row.cells]) + "|"
+                                    text_content.append(separator)
+                            text_content.append("")
+                
+                result_text = "\n".join(text_content)
+                
+                conversion_info = {
+                    "method": "python-pptx",
+                    "file_name": input_path.name,
+                    "file_size": input_path.stat().st_size,
+                    "slide_count": slide_count,
+                    "content_length": len(result_text)
+                }
+                
+                logger.info(f"成功使用 python-pptx 轉換 {slide_count} 張投影片")
+                return True, result_text, conversion_info
+                
+            except ImportError:
+                logger.warning("未安裝 python-pptx，嘗試使用 MarkItDown...")
+            except Exception as e:
+                logger.warning(f"python-pptx 轉換失敗: {e}，嘗試使用 MarkItDown...")
+        
         # 建立 MarkItDown 實例
         md_kwargs = {"enable_plugins": True}
         llm_client = None
