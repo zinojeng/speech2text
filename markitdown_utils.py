@@ -97,36 +97,33 @@ def convert_file_to_markdown(input_path: str,
         # 使用原始 MarkItDown 進行轉換（適用於所有檔案類型）
         
         # 建立 MarkItDown 實例
-        # 對於 PPTX 檔案，啟用所有插件以獲得最佳效果
-        md_kwargs = {}
-        if str(input_path).lower().endswith('.pptx'):
-            md_kwargs["enable_plugins"] = True
+        # 對於 PPTX 檔案或任何可能包含圖片的檔案，啟用所有插件
+        md_kwargs = {"enable_plugins": True}
         
         llm_client = None
         llm_info = {}
         
-        if use_llm:
-            logger.info(f"嘗試啟用 LLM ({model}) 進行處理...")
-            current_api_key = api_key or os.environ.get("OPENAI_API_KEY")
-            if not current_api_key:
-                logger.warning("未提供 OpenAI API Key，無法使用 LLM 處理圖片。")
-                llm_info["status"] = "未提供 API Key"
-            else:
-                try:
-                    llm_client = OpenAI(api_key=current_api_key)
-                    # 執行一個簡單的測試呼叫來驗證金鑰
-                    llm_client.models.list() 
-                    logger.info("OpenAI API Key 驗證成功。")
-                    md_kwargs["llm_client"] = llm_client
-                    md_kwargs["llm_model"] = model
-                    llm_info["status"] = "啟用成功"
-                    llm_info["model"] = model
-                except AuthenticationError:
-                    logger.error("OpenAI API Key 無效或錯誤，無法使用 LLM。")
-                    llm_info["status"] = "API Key 無效"
-                except Exception as e:
-                    logger.error(f"初始化 OpenAI client 時發生錯誤: {e}")
-                    llm_info["status"] = f"初始化錯誤: {str(e)}"
+        # 檢查是否有 API Key 可用於圖片處理
+        current_api_key = api_key or os.environ.get("OPENAI_API_KEY")
+        if current_api_key:
+            try:
+                llm_client = OpenAI(api_key=current_api_key)
+                # 執行一個簡單的測試呼叫來驗證金鑰
+                llm_client.models.list() 
+                logger.info("OpenAI API Key 驗證成功，將用於 MarkItDown 圖片處理。")
+                md_kwargs["llm_client"] = llm_client
+                md_kwargs["llm_model"] = model if use_llm else "gpt-4o-mini"  # 默認使用較便宜的模型
+                llm_info["status"] = "啟用成功"
+                llm_info["model"] = md_kwargs["llm_model"]
+            except AuthenticationError:
+                logger.error("OpenAI API Key 無效或錯誤，無法使用 LLM。")
+                llm_info["status"] = "API Key 無效"
+            except Exception as e:
+                logger.error(f"初始化 OpenAI client 時發生錯誤: {e}")
+                llm_info["status"] = f"初始化錯誤: {str(e)}"
+        else:
+            logger.warning("未提供 OpenAI API Key，MarkItDown 將無法處理圖片內容。")
+            llm_info["status"] = "未提供 API Key"
 
         # 嘗試建立 MarkItDown 實例，如果失敗則嘗試修復
         max_retries = 2
@@ -196,9 +193,31 @@ def convert_file_to_markdown(input_path: str,
                 text_lines = [line for line in lines if line.strip() and not line.strip().startswith('<!--') and not line.strip().startswith('![')]
                 
                 if len(image_lines) > len(text_lines) and len(text_lines) < 5:
-                    # 主要是圖片內容，增加說明
+                    # 主要是圖片內容，但 MarkItDown 應該已經處理了圖片
                     slide_count = len([line for line in lines if 'Slide number:' in line])
-                    enhanced_content = f"""# PPTX 檔案內容
+                    
+                    # 檢查是否有 LLM 客戶端進行圖片處理
+                    if "llm_client" in md_kwargs:
+                        enhanced_content = f"""# PPTX 檔案內容
+
+**檔案說明：** 此 PowerPoint 檔案主要包含圖片內容。MarkItDown 已自動分析圖片。
+
+**投影片數量：** {slide_count} 張
+
+**內容類型：** 圖片為主的簡報
+
+**處理狀態：** ✅ 已使用 OpenAI 模型分析圖片內容
+
+## MarkItDown 處理結果
+
+{text_content}
+
+---
+
+**提示：** 如需更深度的圖片分析，可啟用「🔍 進階 Vision API 分析」選項。
+"""
+                    else:
+                        enhanced_content = f"""# PPTX 檔案內容
 
 **檔案說明：** 此 PowerPoint 檔案主要包含圖片內容。
 
@@ -206,14 +225,17 @@ def convert_file_to_markdown(input_path: str,
 
 **內容類型：** 圖片為主的簡報
 
-## 原始 MarkItDown 輸出
+**處理狀態：** ⚠️ 未提供 API 金鑰，無法分析圖片內容
+
+## MarkItDown 處理結果
 
 {text_content}
 
 ---
 
-**提示：** 如需分析圖片內容，請啟用「🔍 Vision API 分析」選項。
+**提示：** 請在側邊欄填入 OpenAI API 金鑰以啟用圖片內容分析功能。
 """
+                    
                     conversion_info["content_length"] = len(enhanced_content)
                     return True, enhanced_content, conversion_info
             

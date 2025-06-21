@@ -474,9 +474,9 @@ def render_markitdown_tab():
             
             # 添加 Vision API 選項
             use_vision_api = st.checkbox(
-                "🔍 啟用 Vision API 分析 (適用於 PPTX 圖片投影片)",
-                value=True,
-                help="當 PPTX 投影片沒有文字時，使用 OpenAI Vision API 分析圖片內容。需要 OpenAI API 金鑰。"
+                "🔍 啟用進階 Vision API 分析 (適用於複雜 PPTX 圖片投影片)",
+                value=False,
+                help="使用進階 Vision API 將整個 PPTX 轉為圖片進行深度分析。即使不勾選，MarkItDown 也會自動處理文件中的圖片內容。需要 OpenAI API 金鑰。"
             )
             
             # 如果啟用了 Vision API 但沒有 API 金鑰，顯示警告
