@@ -5,7 +5,7 @@ gradio>=4.19.2
 python-dotenv>=1.0.1
 requests>=2.31.0
 google-generativeai>=0.5.0
-markitdown>=0.1.1
+markitdown[pptx]>=0.1.1
 tiktoken>=0.5.1
 
 # Audio processing

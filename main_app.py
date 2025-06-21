@@ -472,6 +472,17 @@ def render_markitdown_tab():
             # 檢查是否有 OpenAI API 金鑰
             openai_api_key = st.session_state.get("openai_api_key", "")
             
+            # 添加 Vision API 選項
+            use_vision_api = st.checkbox(
+                "🔍 啟用 Vision API 分析 (適用於 PPTX 圖片投影片)",
+                value=True,
+                help="當 PPTX 投影片沒有文字時，使用 OpenAI Vision API 分析圖片內容。需要 OpenAI API 金鑰。"
+            )
+            
+            # 如果啟用了 Vision API 但沒有 API 金鑰，顯示警告
+            if use_vision_api and not openai_api_key:
+                st.warning("⚠️ 已啟用 Vision API，但未提供 OpenAI API 金鑰。請在側邊欄填入 API 金鑰以使用此功能。")
+            
             # 處理說明
             if uploaded_files:
                 # 分類上傳的檔案
@@ -529,9 +540,9 @@ def render_markitdown_tab():
                                     success, md_text, info = (
                                         convert_file_to_markdown(
                                             input_path=temp_path,
-                                            use_llm=False,
+                                            use_llm=use_vision_api,
                                             api_key=openai_api_key,
-                                            model="o4-mini"  # 使用 o4-mini 模型
+                                            model="gpt-4o"  # Vision API 需要 gpt-4o 模型
                                         )
                                     )
                                     

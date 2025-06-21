@@ -11,6 +11,8 @@ from openai import OpenAI, AuthenticationError
 from typing import Dict, Any, Optional, List, Tuple
 import subprocess
 import sys
+import base64
+from io import BytesIO
 
 # 設定日誌
 logging.basicConfig(
@@ -66,6 +68,35 @@ def convert_file_to_markdown(input_path: str,
         # 檢查是否為 PPTX 檔案，如果是則使用替代方法
         if str(input_path).lower().endswith('.pptx'):
             logger.info("偵測到 PPTX 檔案，使用替代轉換方法...")
+            
+            # 如果啟用 LLM 且有 API Key，優先使用 Vision API 方案
+            if use_llm and api_key:
+                try:
+                    from alternative_pptx_converter import analyze_pptx_with_vision
+                    logger.info("嘗試使用 Vision API 分析 PPTX...")
+                    
+                    success, result_text, vision_info = analyze_pptx_with_vision(
+                        str(input_path), api_key, model
+                    )
+                    
+                    if success and result_text:
+                        conversion_info = {
+                            "method": "vision_api",
+                            "file_name": input_path.name,
+                            "file_size": input_path.stat().st_size,
+                            **vision_info
+                        }
+                        logger.info(f"成功使用 Vision API 分析 PPTX，內容長度: {len(result_text)}")
+                        return True, result_text, conversion_info
+                    else:
+                        logger.warning("Vision API 分析失敗，回退到 python-pptx 方法")
+                        
+                except ImportError:
+                    logger.warning("找不到 alternative_pptx_converter 模組，使用 python-pptx 方法")
+                except Exception as e:
+                    logger.warning(f"Vision API 分析出錯: {e}，使用 python-pptx 方法")
+            
+            # 回退到原本的 python-pptx 方法
             try:
                 # 嘗試使用 python-pptx 直接轉換
                 from pptx import Presentation
@@ -78,12 +109,26 @@ def convert_file_to_markdown(input_path: str,
                     slide_count += 1
                     text_content.append(f"\n## 投影片 {slide_idx}\n")
                     
+                    slide_has_content = False
+                    
                     for shape in slide.shapes:
-                        if hasattr(shape, "text") and shape.text:
+                        # 檢查文字內容
+                        if hasattr(shape, "text") and shape.text and shape.text.strip():
                             text_content.append(shape.text.strip())
                             text_content.append("")
+                            slide_has_content = True
                         
-                        if shape.has_table:
+                        # 檢查文字框內的段落
+                        if hasattr(shape, "text_frame") and shape.text_frame:
+                            for paragraph in shape.text_frame.paragraphs:
+                                para_text = paragraph.text.strip()
+                                if para_text:
+                                    text_content.append(para_text)
+                                    text_content.append("")
+                                    slide_has_content = True
+                        
+                        # 檢查表格
+                        if hasattr(shape, 'has_table') and shape.has_table:
                             text_content.append("\n### 表格\n")
                             table = shape.table
                             for row_idx, row in enumerate(table.rows):
@@ -96,6 +141,39 @@ def convert_file_to_markdown(input_path: str,
                                     separator = "|" + "|".join([" --- " for _ in row.cells]) + "|"
                                     text_content.append(separator)
                             text_content.append("")
+                            slide_has_content = True
+                    
+                    # 如果投影片沒有文字內容，檢查是否有圖片並使用 Vision API
+                    if not slide_has_content:
+                        image_analyzed = False
+                        
+                        # 如果啟用了 LLM 且有 API Key，嘗試分析圖片
+                        if use_llm and api_key:
+                            try:
+                                # 提取投影片為圖片
+                                slide_image_path = extract_slide_as_image(prs, slide_idx - 1, input_path)
+                                if slide_image_path:
+                                    # 使用 OpenAI Vision 分析圖片
+                                    vision_result = analyze_slide_image(slide_image_path, api_key, model)
+                                    if vision_result:
+                                        text_content.append("### 🔍 圖片內容分析")
+                                        text_content.append(vision_result)
+                                        text_content.append("")
+                                        image_analyzed = True
+                                        slide_has_content = True
+                                    
+                                    # 清理臨時圖片檔案
+                                    try:
+                                        os.remove(slide_image_path)
+                                    except:
+                                        pass
+                            except Exception as e:
+                                logger.warning(f"分析投影片 {slide_idx} 圖片時出錯: {e}")
+                        
+                        # 如果沒有分析圖片或分析失敗，添加預設提示
+                        if not image_analyzed:
+                            text_content.append("*此投影片無文字內容或為圖片投影片*")
+                            text_content.append("")
                 
                 result_text = "\n".join(text_content)
                 
@@ -107,7 +185,12 @@ def convert_file_to_markdown(input_path: str,
                     "content_length": len(result_text)
                 }
                 
-                logger.info(f"成功使用 python-pptx 轉換 {slide_count} 張投影片")
+                logger.info(f"成功使用 python-pptx 轉換 {slide_count} 張投影片，內容長度: {len(result_text)}")
+                
+                # 如果結果為空或過短，記錄警告
+                if len(result_text.strip()) < 50:
+                    logger.warning(f"轉換結果可能為空或過短，內容預覽: {repr(result_text[:100])}")
+                
                 return True, result_text, conversion_info
                 
             except ImportError:
@@ -475,4 +558,84 @@ def convert_images_to_markdown(
         import traceback
         error_details = traceback.format_exc()
         logger.error(error_details)
-        return False, "", {"error": str(e), "details": error_details} 
+        return False, "", {"error": str(e), "details": error_details}
+
+
+def extract_slide_as_image(presentation, slide_index: int, input_path: str) -> Optional[str]:
+    """
+    將 PowerPoint 投影片轉換為圖片
+    
+    Args:
+        presentation: python-pptx Presentation 物件
+        slide_index: 投影片索引 (0-based)
+        input_path: 原始 PPTX 檔案路徑
+        
+    Returns:
+        Optional[str]: 臨時圖片檔案路徑，失敗時返回 None
+    """
+    try:
+        # 這裡需要使用其他方法來將投影片轉為圖片
+        # 由於 python-pptx 不直接支援轉圖片，我們可以使用其他方案
+        
+        # 方案 1: 嘗試使用 PIL 和 python-pptx 的形狀資訊
+        # 但這個方法有限制，更好的方案是使用外部工具
+        
+        # 暫時返回 None，表示無法提取圖片
+        # 在實際使用中，可以整合 LibreOffice 或其他工具
+        logger.warning(f"投影片 {slide_index + 1} 圖片提取功能尚未完全實現")
+        return None
+        
+    except Exception as e:
+        logger.error(f"提取投影片 {slide_index + 1} 為圖片時出錯: {e}")
+        return None
+
+
+def analyze_slide_image(image_path: str, api_key: str, model: str = "gpt-4o") -> Optional[str]:
+    """
+    使用 OpenAI Vision API 分析投影片圖片
+    
+    Args:
+        image_path: 圖片檔案路徑
+        api_key: OpenAI API Key
+        model: 使用的模型名稱
+        
+    Returns:
+        Optional[str]: 分析結果文字，失敗時返回 None
+    """
+    try:
+        client = OpenAI(api_key=api_key)
+        
+        # 讀取並編碼圖片
+        with open(image_path, "rb") as image_file:
+            base64_image = base64.b64encode(image_file.read()).decode('utf-8')
+        
+        response = client.chat.completions.create(
+            model=model,
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": "請仔細分析這張投影片圖片的內容，包括文字、圖表、圖像等元素，並用繁體中文詳細描述。請特別注意：1) 提取所有可見的文字內容 2) 描述圖表、圖像的類型和內容 3) 解釋投影片的主要訊息和重點"
+                        },
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:image/jpeg;base64,{base64_image}"
+                            }
+                        }
+                    ]
+                }
+            ],
+            max_tokens=1000,
+            temperature=0.3
+        )
+        
+        result = response.choices[0].message.content
+        logger.info(f"成功分析投影片圖片，結果長度: {len(result) if result else 0}")
+        return result
+        
+    except Exception as e:
+        logger.error(f"使用 Vision API 分析投影片圖片時出錯: {e}")
+        return None 
