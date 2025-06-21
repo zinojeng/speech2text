@@ -97,8 +97,11 @@ def convert_file_to_markdown(input_path: str,
         # 使用原始 MarkItDown 進行轉換（適用於所有檔案類型）
         
         # 建立 MarkItDown 實例
-        # 根據官方文檔，默認不啟用插件，除非特別需要
+        # 對於 PPTX 檔案，啟用所有插件以獲得最佳效果
         md_kwargs = {}
+        if str(input_path).lower().endswith('.pptx'):
+            md_kwargs["enable_plugins"] = True
+        
         llm_client = None
         llm_info = {}
         
@@ -182,6 +185,37 @@ def convert_file_to_markdown(input_path: str,
             if hasattr(result, 'converter_used'):
                 conversion_info["converter"] = result.converter_used
             conversion_info["content_length"] = len(result.text_content)
+            
+            # 對於 PPTX 檔案，如果只有圖片引用而沒有實際文字內容，提供更好的說明
+            if str(input_path).lower().endswith('.pptx'):
+                text_content = result.text_content
+                
+                # 檢查是否主要是圖片內容
+                lines = text_content.split('\n')
+                image_lines = [line for line in lines if line.strip().startswith('![') or 'Picture' in line]
+                text_lines = [line for line in lines if line.strip() and not line.strip().startswith('<!--') and not line.strip().startswith('![')]
+                
+                if len(image_lines) > len(text_lines) and len(text_lines) < 5:
+                    # 主要是圖片內容，增加說明
+                    slide_count = len([line for line in lines if 'Slide number:' in line])
+                    enhanced_content = f"""# PPTX 檔案內容
+
+**檔案說明：** 此 PowerPoint 檔案主要包含圖片內容。
+
+**投影片數量：** {slide_count} 張
+
+**內容類型：** 圖片為主的簡報
+
+## 原始 MarkItDown 輸出
+
+{text_content}
+
+---
+
+**提示：** 如需分析圖片內容，請啟用「🔍 Vision API 分析」選項。
+"""
+                    conversion_info["content_length"] = len(enhanced_content)
+                    return True, enhanced_content, conversion_info
             
             return True, result.text_content, conversion_info
         else:
