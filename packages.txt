@@ -1,3 +1,2 @@
 ffmpeg
-python3-pip
 poppler-utils 

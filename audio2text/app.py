@@ -2,6 +2,7 @@ import gradio as gr
 import os
 from elevenlabs_stt import transcribe_audio_elevenlabs
 from whisper_stt import transcribe_audio_whisper
+from gpt4o_stt import transcribe_audio_gpt4o
 from transcript_refiner import refine_transcript
 from utils import calculate_tokens_and_cost, OPENAI_MODELS, MODEL_PRICES
 
@@ -11,7 +12,9 @@ def process_audio(
     elevenlabs_api_key,
     service_choice,
     openai_model,
+    gpt4o_model,
     language,
+    output_format,
     speaker_detection=False,
     creativity=0.5
 ):
@@ -30,19 +33,34 @@ def process_audio(
                 language_code=language,
                 diarize=speaker_detection
             )
+        elif service_choice == "GPT-4o":
+            # GPT-4o 轉錄，支援不同輸出格式
+            lang_code = language if language and language != "" else None
+            format_code = output_format.lower().replace(" (含時間戳)", "").replace("純文字", "text")
+            transcript = transcribe_audio_gpt4o(
+                file_path=audio_file,
+                api_key=openai_api_key,
+                model=gpt4o_model,
+                language=lang_code,
+                output_format=format_code
+            )
         else:  # Whisper
             transcript = transcribe_audio_whisper(
                 audio_file,
                 language=language
             )
 
-        # 優化文字
-        refined_text = refine_transcript(
-            transcript,
-            openai_api_key,
-            openai_model,
-            creativity
-        )
+        # 優化文字 (只有純文字格式才進行優化)
+        if service_choice == "GPT-4o" and output_format != "純文字":
+            # SRT 或 Markdown 格式不進行文字優化
+            refined_text = "此格式不適用文字優化"
+        else:
+            refined_text = refine_transcript(
+                transcript,
+                openai_api_key,
+                openai_model,
+                creativity
+            )
 
         # 計算 token 和費用
         tokens_info, cost_info = calculate_tokens_and_cost(
@@ -91,15 +109,29 @@ with gr.Blocks() as demo:
                 )
             
             service = gr.Radio(
-                choices=["Whisper", "ElevenLabs"],
+                choices=["Whisper", "ElevenLabs", "GPT-4o"],
                 label="選擇轉錄服務",
                 value="Whisper"
             )
             
             model = gr.Dropdown(
                 choices=list(OPENAI_MODELS.keys()),
-                label="選擇 OpenAI 模型",
+                label="選擇 OpenAI 模型（用於文字優化）",
                 value="gpt-3.5-turbo"
+            )
+            
+            gpt4o_model = gr.Dropdown(
+                choices=["gpt-4o-transcribe", "gpt-4o-mini-transcribe"],
+                label="選擇 GPT-4o 語音模型（僅限 GPT-4o 服務）",
+                value="gpt-4o-transcribe",
+                visible=False
+            )
+            
+            output_format = gr.Radio(
+                choices=["純文字", "Markdown", "SRT (含時間戳)"],
+                label="輸出格式（僅限 GPT-4o 服務）",
+                value="純文字",
+                visible=False
             )
             
             language = gr.Textbox(
@@ -147,6 +179,19 @@ with gr.Blocks() as demo:
     - 每次使用需重新輸入 API 金鑰
     """)
     
+    # 動態顯示/隱藏 GPT-4o 選項
+    def toggle_gpt4o_options(service_choice):
+        if service_choice == "GPT-4o":
+            return gr.update(visible=True), gr.update(visible=True)
+        else:
+            return gr.update(visible=False), gr.update(visible=False)
+    
+    service.change(
+        fn=toggle_gpt4o_options,
+        inputs=[service],
+        outputs=[gpt4o_model, output_format]
+    )
+    
     # 設定處理函數
     process_btn.click(
         fn=process_audio,
@@ -156,7 +201,9 @@ with gr.Blocks() as demo:
             elevenlabs_key,
             service,
             model,
+            gpt4o_model,
             language,
+            output_format,
             speaker,
             creativity
         ],

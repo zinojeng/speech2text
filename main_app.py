@@ -164,6 +164,123 @@ def encode_image_to_base64(image_path: str) -> str:
         logger.error(f"圖片編碼失敗: {str(e)}")
         return ""
 
+def generate_srt_from_json(json_responses, segment_duration=600, overlap_duration=30):
+    """
+    從 JSON 格式的轉錄結果生成 SRT 字幕
+    
+    Args:
+        json_responses: JSON 格式的轉錄回應列表
+        segment_duration: 每段音頻長度（秒）
+        overlap_duration: 重疊時長（秒）
+    
+    Returns:
+        SRT 格式的字幕文字
+    """
+    srt_content = []
+    subtitle_index = 1
+    
+    for segment_idx, response in enumerate(json_responses):
+        if not response:
+            continue
+            
+        # 計算此分段的時間偏移
+        segment_offset = max(0, segment_idx * segment_duration - overlap_duration if segment_idx > 0 else 0)
+        
+        # 檢查 JSON 回應是否包含 words 或 segments 信息
+        try:
+            if hasattr(response, 'words') and response.words:
+                # 如果有詳細的詞級時間戳
+                for word in response.words:
+                    start_time = segment_offset + word.start
+                    end_time = segment_offset + word.end
+                    
+                    start_srt = format_srt_time(start_time)
+                    end_srt = format_srt_time(end_time)
+                    
+                    srt_content.append(f"{subtitle_index}")
+                    srt_content.append(f"{start_srt} --> {end_srt}")
+                    srt_content.append(word.word.strip())
+                    srt_content.append("")
+                    subtitle_index += 1
+            
+            elif hasattr(response, 'segments') and response.segments:
+                # 如果有句級時間戳
+                for segment in response.segments:
+                    start_time = segment_offset + segment.start
+                    end_time = segment_offset + segment.end
+                    
+                    start_srt = format_srt_time(start_time)
+                    end_srt = format_srt_time(end_time)
+                    
+                    srt_content.append(f"{subtitle_index}")
+                    srt_content.append(f"{start_srt} --> {end_srt}")
+                    srt_content.append(segment.text.strip())
+                    srt_content.append("")
+                    subtitle_index += 1
+            
+            else:
+                # 如果沒有詳細時間戳，使用文字內容估算
+                text = response.text if hasattr(response, 'text') else str(response)
+                fallback_srt = generate_srt_format_fallback([text], segment_offset, segment_duration)
+                if fallback_srt:
+                    srt_content.extend(fallback_srt.split('\n'))
+                    subtitle_index += text.count('.') + 1
+                    
+        except Exception as e:
+            # 如果 JSON 解析失敗，回退到基本模式
+            logger.warning(f"JSON 解析失敗，使用回退模式: {e}")
+            text = response.text if hasattr(response, 'text') else str(response)
+            fallback_srt = generate_srt_format_fallback([text], segment_offset, segment_duration)
+            if fallback_srt:
+                srt_content.extend(fallback_srt.split('\n'))
+                subtitle_index += text.count('.') + 1
+    
+    return "\n".join(srt_content)
+
+def generate_srt_format_fallback(text_segments, segment_offset=0, segment_duration=600):
+    """
+    回退模式：將文字分段轉換為 SRT 字幕格式
+    """
+    srt_content = []
+    subtitle_index = 1
+    
+    for text in text_segments:
+        if not text or not text.strip():
+            continue
+            
+        # 將文字分割為句子
+        sentences = [s.strip() for s in text.split('.') if s.strip()]
+        sentence_duration = segment_duration / max(len(sentences), 1)
+        
+        for j, sentence in enumerate(sentences):
+            if not sentence:
+                continue
+                
+            subtitle_start = segment_offset + j * sentence_duration
+            subtitle_end = min(subtitle_start + sentence_duration, segment_offset + segment_duration)
+            
+            # 格式化時間
+            start_srt = format_srt_time(subtitle_start)
+            end_srt = format_srt_time(subtitle_end)
+            
+            # 添加 SRT 條目
+            srt_content.append(f"{subtitle_index}")
+            srt_content.append(f"{start_srt} --> {end_srt}")
+            srt_content.append(sentence + '.')
+            srt_content.append("")  # 空行分隔
+            subtitle_index += 1
+    
+    return "\n".join(srt_content)
+
+def format_srt_time(seconds):
+    """將秒數轉換為 SRT 時間格式 (HH:MM:SS,mmm)"""
+    hours = int(seconds // 3600)
+    minutes = int((seconds % 3600) // 60)
+    secs = int(seconds % 60)
+    milliseconds = int((seconds % 1) * 1000)
+    
+    return f"{hours:02d}:{minutes:02d}:{secs:02d},{milliseconds:03d}"
+
 def calculate_cost(input_tokens, output_tokens, model_name, is_cached=False):
     """計算 API 使用成本
     
@@ -1092,6 +1209,17 @@ def main():
                             language_code = languages[selected_lang]
                     else:
                         language_code = None
+                    
+                    # 輸出格式設定
+                    output_format = st.radio(
+                        "輸出格式",
+                        options=["純文字", "Markdown", "SRT (含時間戳)"],
+                        index=0,
+                        help=("純文字：標準轉錄文字；"
+                             "Markdown：結構化格式；"
+                             "SRT：字幕格式，含時間戳")
+                    )
+                    st.session_state["output_format"] = output_format
                 
                 elif transcription_service == "ElevenLabs":
                     # ElevenLabs API 金鑰
@@ -1253,23 +1381,61 @@ def main():
         if st.session_state.transcribed_text:
             st.subheader("轉錄結果")
             
-            # 顯示轉錄文字
-            st.text_area(
-                "轉錄文字",
-                st.session_state.transcribed_text,
-                height=200
-            )
+            # 根據輸出格式決定顯示方式
+            output_format = st.session_state.get("output_format", "純文字")
+            
+            if output_format == "Markdown":
+                # Markdown 格式使用 st.markdown 顯示
+                st.markdown(st.session_state.transcribed_text)
+                
+                # 同時提供原始文字區域以便編輯
+                with st.expander("📝 檢視/編輯原始 Markdown 內容"):
+                    st.text_area(
+                        "Markdown 內容",
+                        st.session_state.transcribed_text,
+                        height=200,
+                        key="markdown_content"
+                    )
+            elif output_format == "SRT (含時間戳)":
+                # SRT 格式使用 code 區塊顯示
+                st.code(st.session_state.transcribed_text, language="srt")
+                
+                # 同時提供文字區域以便編輯
+                with st.expander("📝 檢視/編輯 SRT 內容"):
+                    st.text_area(
+                        "SRT 內容",
+                        st.session_state.transcribed_text,
+                        height=200,
+                        key="srt_content"
+                    )
+            else:
+                # 純文字格式
+                st.text_area(
+                    "轉錄文字",
+                    st.session_state.transcribed_text,
+                    height=200
+                )
             
             # 下載按鈕
             st.markdown("### 下載選項")
+            
+            # 根據格式設定檔案副檔名和 MIME 類型
+            file_extensions = {
+                "純文字": ("txt", "text/plain"),
+                "Markdown": ("md", "text/markdown"),
+                "SRT (含時間戳)": ("srt", "text/plain")
+            }
+            
+            ext, mime_type = file_extensions.get(output_format, ("txt", "text/plain"))
+            
             st.download_button(
-                label="📥 下載轉錄文字",
+                label=f"📥 下載 {output_format} 檔案",
                 data=st.session_state.transcribed_text,
-                file_name="transcription.txt",
-                mime="text/plain",
-                help="下載轉錄後的文字檔案",
+                file_name=f"transcription.{ext}",
+                mime=mime_type,
+                help=f"下載 {output_format} 格式的轉錄檔案",
                 use_container_width=True,
-                key="download_transcription"
+                key="download_transcription_formatted"
             )
             
             # 只在有轉錄文字時顯示優化按鈕，添加 Step 3 指示
@@ -1398,6 +1564,14 @@ def main():
                                 while retry_count < MAX_RETRIES:
                                     try:
                                         with open(segment_path, "rb") as audio_file:
+                                            # GPT-4o 模型只支援 text 和 json 格式
+                                            # 根據官方文件，gpt-4o-transcribe 只支援 json 和 text
+                                            selected_format = st.session_state.get("output_format", "純文字")
+                                            if selected_format == "SRT (含時間戳)":
+                                                api_format = "json"  # 使用 json 嘗試獲取時間信息
+                                            else:
+                                                api_format = "text"
+                                            
                                             response = (
                                                 openai_client.audio
                                                 .transcriptions
@@ -1405,13 +1579,18 @@ def main():
                                                     model=st.session_state["openai_model"],
                                                     file=audio_file,
                                                     language=language_code,
-                                                    response_format="text",
+                                                    response_format=api_format,
                                                     prompt=st.session_state["transcription_prompt"],
                                                     temperature=0.3
                                                 )
                                             )
-                                            # 成功則添加文字結果
-                                            segment_results.append(response)
+                                            # 成功則添加結果
+                                            if api_format == "json":
+                                                # JSON 格式，儲存完整回應以供後續處理
+                                                segment_results.append(response)
+                                            else:
+                                                # TEXT 格式，使用 .text 屬性
+                                                segment_results.append(response.text)
                                             logger.info(
                                                 "成功轉錄分段 %d/%d",
                                                 i + 1,
@@ -1460,7 +1639,36 @@ def main():
                                 )
                         
                         # 合併結果
-                        full_transcript = " ".join(segment_results)
+                        # 根據輸出格式處理結果
+                        selected_format = st.session_state.get("output_format", "純文字")
+                        
+                        if selected_format == "SRT (含時間戳)":
+                            # 使用 JSON 回應生成 SRT
+                            full_transcript = generate_srt_from_json(
+                                segment_results,
+                                segment_duration=600,
+                                overlap_duration=30
+                            )
+                        elif selected_format == "Markdown":
+                            # 從結果中提取文字內容
+                            text_parts = []
+                            for result in segment_results:
+                                if hasattr(result, 'text'):
+                                    text_parts.append(result.text)
+                                else:
+                                    text_parts.append(str(result))
+                            raw_text = " ".join(text_parts)
+                            full_transcript = f"# 語音轉錄結果\n\n{raw_text}\n"
+                        else:
+                            # 純文字格式，從結果中提取文字內容
+                            text_parts = []
+                            for result in segment_results:
+                                if hasattr(result, 'text'):
+                                    text_parts.append(result.text)
+                                else:
+                                    text_parts.append(str(result))
+                            full_transcript = " ".join(text_parts)
+                        
                         logger.info("完成所有分段的轉錄與合併")
                     
                     except Exception as e:
