@@ -1,0 +1,14 @@
+{
+  "name": "speech2text",
+  "build": {
+    "dockerfile": "Dockerfile"
+  },
+  "deploy": {
+    "env": {
+      "STREAMLIT_SERVER_HEADLESS": "true",
+      "STREAMLIT_SERVER_PORT": "8080",
+      "STREAMLIT_SERVER_ADDRESS": "0.0.0.0",
+      "STREAMLIT_BROWSER_GATHER_USAGE_STATS": "false"
+    }
+  }
+}
