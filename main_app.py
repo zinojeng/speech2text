@@ -1572,6 +1572,12 @@ def main():
                                             else:
                                                 api_format = "text"
                                             
+                                            # 添加詳細的調試信息
+                                            logger.info(f"準備轉錄分段 {i+1}/{len(audio_segments)}")
+                                            logger.info(f"使用模型: {st.session_state['openai_model']}")
+                                            logger.info(f"API 格式: {api_format}")
+                                            logger.info(f"語言代碼: {language_code}")
+                                            
                                             response = (
                                                 openai_client.audio
                                                 .transcriptions
@@ -1588,9 +1594,13 @@ def main():
                                             if api_format == "json":
                                                 # JSON 格式，儲存完整回應以供後續處理
                                                 segment_results.append(response)
+                                                logger.info(f"JSON 回應長度: {len(str(response))}")
                                             else:
                                                 # TEXT 格式，使用 .text 屬性
-                                                segment_results.append(response.text)
+                                                text_result = response.text if hasattr(response, 'text') else str(response)
+                                                segment_results.append(text_result)
+                                                logger.info(f"文字結果長度: {len(text_result)}")
+                                                logger.info(f"文字結果預覽: {text_result[:100]}...")
                                             logger.info(
                                                 "成功轉錄分段 %d/%d",
                                                 i + 1,
@@ -1601,6 +1611,7 @@ def main():
                                     except Exception as e:
                                         retry_count += 1
                                         error_msg = str(e)
+                                        logger.error(f"OpenAI API 錯誤詳細信息: {error_msg}")
                                         if retry_count < MAX_RETRIES:
                                             logger.warning(
                                                 "處理分段 %d 失敗 (重試 %d/%d)：%s",
@@ -1616,6 +1627,8 @@ def main():
                                                 i + 1,
                                                 error_msg
                                             )
+                                            # 顯示錯誤給用戶
+                                            st.error(f"OpenAI API 錯誤: {error_msg}")
                                 if failed:
                                     # 若全部嘗試都失敗，附加空字串，確保完整排序
                                     segment_results.append("")
@@ -1637,6 +1650,9 @@ def main():
                                     "清理臨時檔案失敗：%s",
                                     str(e)
                                 )
+                        
+                        # 增加調試日誌
+                        logger.info(f"共處理 {len(segment_results)} 個分段結果")
                         
                         # 合併結果
                         # 根據輸出格式處理結果
@@ -1669,18 +1685,24 @@ def main():
                                     text_parts.append(str(result))
                             full_transcript = " ".join(text_parts)
                         
+                        # 添加調試日誌
+                        logger.info(f"轉錄結果長度: {len(full_transcript) if full_transcript else 0}")
                         logger.info("完成所有分段的轉錄與合併")
                     
                     except Exception as e:
                         st.error(f"處理失敗：{str(e)}")
                         logger.error(f"處理失敗：{str(e)}")
+                        full_transcript = ""  # 確保異常時重置變數
                     
                     # 處理轉錄結果
-                    if full_transcript:
+                    if full_transcript and full_transcript.strip():
                         st.session_state.transcribed_text = full_transcript
+                        st.success("轉錄完成！")
+                        logger.info("轉錄結果已儲存至 session_state")
                         st.rerun()  # 使用新的 rerun 方法
                     else:
-                        st.error("轉錄失敗")
+                        st.error("轉錄失敗或結果為空")
+                        logger.error("轉錄失敗：結果為空或無效")
                         
             except Exception as e:
                 st.error(f"處理失敗：{str(e)}")
