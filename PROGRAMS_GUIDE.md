@@ -133,14 +133,25 @@ python merge_transcript_slides.py transcription-34.txt slides.md output --images
 ## 🔧 環境設定
 
 ### API 金鑰配置
-```bash
-# 在 .env 檔案中設定
-OPENAI_API_KEY=your_openai_key
-GOOGLE_API_KEY=your_google_key
 
-# 或使用內建的 Google API Key（已在程式中設定）
-GOOGLE_API_KEY=AIzaSyBUNvJo_D2KZV3UVVgQxvFlZC1aFfXIw9k
+⚠️ **重要安全提醒**：絕對不要將 API 金鑰硬編碼在程式中或提交到版本控制系統！
+
+1. **複製範例檔案**：
+```bash
+cp .env.example .env
 ```
+
+2. **編輯 .env 檔案，填入您的 API 金鑰**：
+```bash
+# 必需的 API Keys
+OPENAI_API_KEY=your_openai_api_key_here
+GOOGLE_API_KEY=your_google_api_key_here
+
+# 選用
+ELEVENLABS_API_KEY=your_elevenlabs_api_key_here
+```
+
+3. **確保 .env 在 .gitignore 中**（已設定）
 
 ### 依賴套件
 ```bash

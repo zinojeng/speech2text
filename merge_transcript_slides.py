@@ -52,7 +52,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # API 配置
-GOOGLE_API_KEY = 'AIzaSyBUNvJo_D2KZV3UVVgQxvFlZC1aFfXIw9k'
+GOOGLE_API_KEY = os.getenv('GOOGLE_API_KEY')
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
 
 # 系統提示詞

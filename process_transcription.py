@@ -23,6 +23,10 @@ import google.generativeai as genai
 from docx import Document
 from docx.enum.text import WD_PARAGRAPH_ALIGNMENT
 from datetime import datetime
+from dotenv import load_dotenv
+
+# 載入環境變數
+load_dotenv()
 
 # 設定日誌
 logging.basicConfig(
@@ -36,7 +40,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # API 配置
-GOOGLE_API_KEY = 'AIzaSyBUNvJo_D2KZV3UVVgQxvFlZC1aFfXIw9k'
+GOOGLE_API_KEY = os.getenv('GOOGLE_API_KEY')
 
 # 系統提示詞
 SYSTEM_PROMPT = """This is American Diabetes Association 2025年會，聚焦在糖尿病、代謝、肥胖等主題。

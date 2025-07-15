@@ -99,11 +99,9 @@ class BatchAudioProcessor:
         logger.info("OpenAI API 設定完成")
 
         # 設定 Google Gemini API
-        google_key = 'AIzaSyBUNvJo_D2KZV3UVVgQxvFlZC1aFfXIw9k'  # 使用提供的 API key
+        google_key = os.getenv('GOOGLE_API_KEY')
         if not google_key:
-            google_key = os.getenv('GOOGLE_API_KEY')
-            if not google_key:
-                raise ValueError("請在 .env 檔案中設定 GOOGLE_API_KEY")
+            raise ValueError("請在 .env 檔案中設定 GOOGLE_API_KEY")
 
         genai.configure(api_key=google_key)
         logger.info("Google Gemini API 設定完成")
