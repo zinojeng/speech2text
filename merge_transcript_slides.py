@@ -171,6 +171,35 @@ class TranscriptSlidesProcessor:
             return minutes * 60 + seconds
         return None
     
+    def parse_time_format(self, time_str: str) -> Optional[float]:
+        """
+        解析各種時間格式
+        支援: "3m34.7s", "214.7", "214.7s"
+        """
+        import re
+        
+        # 純數字
+        try:
+            return float(time_str)
+        except ValueError:
+            pass
+        
+        # 數字+s
+        if time_str.endswith('s'):
+            try:
+                return float(time_str[:-1])
+            except ValueError:
+                pass
+        
+        # 分鐘格式
+        match = re.match(r'(\d+)m([\d.]+)s', time_str)
+        if match:
+            minutes = int(match.group(1))
+            seconds = float(match.group(2))
+            return minutes * 60 + seconds
+        
+        return None
+    
     def load_slide_images(self, images_folder: str) -> Dict[float, str]:
         """
         載入投影片圖片並按時間排序
@@ -266,6 +295,9 @@ class TranscriptSlidesProcessor:
                 processed_lines = []
                 
                 for line in lines:
+                    img_inserted = False
+                    
+                    # 處理原始格式 [IMAGE: time]
                     if '[IMAGE:' in line:
                         match = re.search(r'\[IMAGE:\s*([\d.]+)\]', line)
                         if match:
@@ -278,7 +310,27 @@ class TranscriptSlidesProcessor:
                                 img_relative = os.path.relpath(img_path, output_path.parent)
                                 # 替換為 Markdown 圖片語法
                                 line = f"![投影片 {closest_time:.1f}s]({img_relative})"
+                                img_inserted = True
                                 logger.info(f"替換圖片標記: {target_time}s -> {os.path.basename(img_path)}")
+                    
+                    # 處理 Gemini 生成的格式：> 🖼️ **投影片圖表說明**（[3m34.7s]）：
+                    if not img_inserted and '🖼️' in line and '（[' in line and ']）' in line:
+                        match = re.search(r'（\[([^\]]+)\]）', line)
+                        if match:
+                            time_str = match.group(1)
+                            target_time = self.parse_time_format(time_str)
+                            if target_time is not None:
+                                # 找到最接近的圖片
+                                closest_time = min(slide_images.keys(), key=lambda x: abs(x - target_time))
+                                if abs(closest_time - target_time) < 30:  # 30秒容差
+                                    img_path = slide_images[closest_time]
+                                    # 轉換為相對路徑
+                                    img_relative = os.path.relpath(img_path, output_path.parent)
+                                    # 在此行之前插入圖片
+                                    processed_lines.append(f"![投影片 {closest_time:.1f}s]({img_relative})")
+                                    processed_lines.append('')  # 空行
+                                    logger.info(f"插入圖片: {target_time}s -> {os.path.basename(img_path)}")
+                    
                     processed_lines.append(line)
                 
                 content = '\n'.join(processed_lines)
@@ -324,7 +376,9 @@ class TranscriptSlidesProcessor:
             lines = markdown_text.split('\n')
             
             for line in lines:
-                # 處理圖片插入標記
+                img_inserted = False
+                
+                # 處理原始格式 [IMAGE: time]
                 if slide_images and '[IMAGE:' in line:
                     match = re.search(r'\[IMAGE:\s*([\d.]+)\]', line)
                     if match:
@@ -339,9 +393,32 @@ class TranscriptSlidesProcessor:
                                     doc.add_picture(img_path, width=Inches(5.5))
                                     doc.add_paragraph()  # 空行
                                     logger.info(f"插入圖片: {os.path.basename(img_path)} (時間: {closest_time}秒)")
+                                    img_inserted = True
                                 except Exception as e:
                                     logger.warning(f"插入圖片失敗: {e}")
-                        continue  # 跳過這一行，不顯示標記
+                        if img_inserted:
+                            continue  # 跳過這一行
+                
+                # 處理 Gemini 生成的格式：> 🖼️ **投影片圖表說明**（[3m34.7s]）：
+                if slide_images and '🖼️' in line and '（[' in line and ']）' in line:
+                    match = re.search(r'（\[([^\]]+)\]）', line)
+                    if match:
+                        time_str = match.group(1)
+                        target_time = self.parse_time_format(time_str)
+                        if target_time is not None:
+                            # 找到最接近的圖片
+                            closest_time = min(slide_images.keys(), key=lambda x: abs(x - target_time))
+                            if abs(closest_time - target_time) < 30:  # 30秒容差
+                                img_path = slide_images[closest_time]
+                                if os.path.exists(img_path):
+                                    try:
+                                        doc.add_paragraph()  # 空行
+                                        doc.add_picture(img_path, width=Inches(5.5))
+                                        doc.add_paragraph()  # 空行
+                                        logger.info(f"插入圖片: {os.path.basename(img_path)} (時間: {closest_time}秒)")
+                                        img_inserted = True
+                                    except Exception as e:
+                                        logger.warning(f"插入圖片失敗: {e}")
                 line = line.strip()
                 if not line:
                     doc.add_paragraph()  # 空行
