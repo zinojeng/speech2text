@@ -348,9 +348,14 @@ class MultiSlidesProcessor:
                                 if img_inserted:
                                     line = img_inserted
                     
-                    # 處理 Gemini 生成的格式：> 🖼️ **投影片圖表說明**（[3m34.7s]）：
-                    if not img_inserted and '🖼️' in line and '（[' in line and ']）' in line:
+                    # 處理 Gemini 生成的格式：> 🖼️ **投影片圖表說明**（[3m34.7s]）：或 ([t3m34.7s]):
+                    if not img_inserted and '🖼️' in line:
+                        # 嘗試匹配中文括號格式
                         match = re.search(r'（\[([^\]]+)\]）', line)
+                        if not match:
+                            # 嘗試匹配英文括號格式 
+                            match = re.search(r'\(\[([^\]]+)\]\)', line)
+                        
                         if match:
                             time_str = match.group(1)
                             target_time = self.parse_time_format(time_str)
@@ -466,9 +471,14 @@ class MultiSlidesProcessor:
                                 img_inserted = True
                                 continue  # 跳過這一行
                 
-                # 處理 Gemini 生成的格式：> 🖼️ **投影片圖表說明**（[3m34.7s]）：
-                if self.all_slide_images and '🖼️' in line and '（[' in line and ']）' in line:
+                # 處理 Gemini 生成的格式：> 🖼️ **投影片圖表說明**（[3m34.7s]）：或 ([t3m34.7s]):
+                if self.all_slide_images and '🖼️' in line:
+                    # 嘗試匹配中文括號格式
                     match = re.search(r'（\[([^\]]+)\]）', line)
+                    if not match:
+                        # 嘗試匹配英文括號格式
+                        match = re.search(r'\(\[([^\]]+)\]\)', line)
+                    
                     if match:
                         time_str = match.group(1)
                         target_time = self.parse_time_format(time_str)
