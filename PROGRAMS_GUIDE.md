@@ -177,6 +177,51 @@ python merge_transcript_multi_slides.py transcript.txt slides1.md slides2.md:ima
 
 ---
 
+## 5. 🎯 互動式合併工具（Shell Scripts）
+
+### interactive_merge.sh - 互動式引導工具
+
+提供友善的互動式介面，一步步引導使用者完成合併流程。
+
+**功能特點：**
+- 🎨 彩色介面，清晰的步驟指引
+- 📁 支援檔案拖放
+- 🖼️ 自動偵測圖片數量
+- ✅ 輸入驗證和錯誤處理
+- 🔄 可重複執行
+
+**使用方式：**
+```bash
+./interactive_merge.sh
+```
+
+**互動流程：**
+1. 選擇演講稿檔案（支援拖放）
+2. 選擇單一或多個投影片模式
+3. 逐一輸入投影片檔案和圖片資料夾
+4. 設定輸出名稱（可選）
+5. 確認並執行
+
+### quick_merge.sh - 快速命令列工具
+
+適合熟悉命令列的使用者，快速執行合併。
+
+**使用方式：**
+```bash
+# 單一投影片
+./quick_merge.sh transcript.txt slides.md
+
+# 多個投影片
+./quick_merge.sh transcript.txt slides1.md slides2.md slides3.md
+```
+
+**特點：**
+- 自動判斷單一或多投影片模式
+- 簡潔的執行過程
+- 適合批次處理或腳本整合
+
+---
+
 ## 🔧 環境設定
 
 ### API 金鑰配置
@@ -242,12 +287,23 @@ python process_transcription.py "/path with spaces/file.txt"
 
 ## 📌 快速參考
 
+### Python 程式
+
 | 程式 | 輸入 | 輸出 | 主要用途 |
 |------|------|------|----------|
 | batch_audio_processor.py | 音訊資料夾 | 轉錄文字 + Word | 批次音訊轉錄 |
 | process_transcription.py | 轉錄文字 | 摘要 MD + Word | 智能摘要生成 |
 | merge_transcript_slides.py | 演講稿 + 投影片 | 整合 MD + Word | 內容整合 |
 | merge_transcript_multi_slides.py | 演講稿 + 多投影片 | 整合 MD + Word | 多投影片整合 |
+
+### Shell 腳本
+
+| 腳本 | 用途 | 特點 |
+|------|------|------|
+| interactive_merge.sh | 互動式合併引導 | 友善介面、步驟引導 |
+| quick_merge.sh | 快速命令列合併 | 簡潔快速、適合批次 |
+| audio_auto.sh | 音訊批次處理 | 自動分割、格式選擇 |
+| start_app.sh | 啟動主程式 | Streamlit 介面 |
 
 ---
 
