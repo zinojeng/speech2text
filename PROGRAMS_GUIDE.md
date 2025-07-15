@@ -102,8 +102,12 @@ python merge_transcript_slides.py <transcript_file> <slides_file>
 # 指定輸出名稱
 python merge_transcript_slides.py transcript.txt slides.md lecture_notes
 
+# 包含圖片嵌入（新功能）
+python merge_transcript_slides.py transcript.txt slides.md output_name --images "./slides/folder"
+
 # 範例
 python merge_transcript_slides.py transcription-34.txt "AID and GLP-1.md"
+python merge_transcript_slides.py transcription-34.txt slides.md output --images "./Slides/folder"
 ```
 
 ### 整合原則
@@ -114,10 +118,15 @@ python merge_transcript_slides.py transcription-34.txt "AID and GLP-1.md"
    - 避免重複內容
 3. **格式標記**：
    - __底線__：標記來自投影片的補充和延伸解讀
+4. **圖片整合**（新功能）：
+   - 支援 `--images` 參數載入投影片圖片
+   - 自動解析圖片時間戳記（如 slide_009_t1m4.7s.jpg）
+   - 在 Word 文件中嵌入實際圖片
+   - Markdown 文件使用圖片連結格式
 
 ### 輸出檔案
-- **Markdown**：`[指定名稱]_merged.md`
-- **Word**：`[指定名稱]_merged.docx`
+- **Markdown**：`[指定名稱]_merged.md`（含圖片連結）
+- **Word**：`[指定名稱]_merged.docx`（含嵌入圖片）
 
 ---
 
