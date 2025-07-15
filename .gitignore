@@ -22,6 +22,7 @@ llm_output.md
 
 # 臨時檔案
 get-pip.py
+temp/
 
 # 測試檔案 (可選擇性加入版本控制)
 *_test.py

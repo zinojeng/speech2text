@@ -29,4 +29,7 @@ pillow>=9.0.0
 pillow-heif>=0.13.0
 
 # Utilities
-tqdm>=4.66.2 
+tqdm>=4.66.2
+
+# Document processing
+python-docx>=0.8.11 
