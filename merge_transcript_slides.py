@@ -174,9 +174,13 @@ class TranscriptSlidesProcessor:
     def parse_time_format(self, time_str: str) -> Optional[float]:
         """
         解析各種時間格式
-        支援: "3m34.7s", "214.7", "214.7s"
+        支援: "3m34.7s", "214.7", "214.7s", "t1m4.7s"
         """
         import re
+        
+        # 移除開頭的 't' 前綴（如果存在）
+        if time_str.startswith('t'):
+            time_str = time_str[1:]
         
         # 純數字
         try:
@@ -297,17 +301,19 @@ class TranscriptSlidesProcessor:
                 for line in lines:
                     img_inserted = False
                     
-                    # 處理原始格式 [IMAGE: time]
+                    # 處理原始格式 [IMAGE: time] (支援 t1m4.7s 格式)
                     if '[IMAGE:' in line:
-                        match = re.search(r'\[IMAGE:\s*([\d.]+)\]', line)
+                        match = re.search(r'\[IMAGE:\s*([^\]]+)\]', line)
                         if match:
-                            target_time = float(match.group(1))
-                            # 找到最接近的圖片
-                            closest_time = min(slide_images.keys(), key=lambda x: abs(x - target_time))
-                            if abs(closest_time - target_time) < 30:  # 30秒容差
-                                img_path = slide_images[closest_time]
-                                # 轉換為相對路徑
-                                img_relative = os.path.relpath(img_path, output_path.parent)
+                            time_str = match.group(1)
+                            target_time = self.parse_time_format(time_str)
+                            if target_time is not None:
+                                # 找到最接近的圖片
+                                closest_time = min(slide_images.keys(), key=lambda x: abs(x - target_time))
+                                if abs(closest_time - target_time) < 30:  # 30秒容差
+                                    img_path = slide_images[closest_time]
+                                    # 轉換為相對路徑
+                                    img_relative = os.path.relpath(img_path, output_path.parent)
                                 # 替換為 Markdown 圖片語法
                                 line = f"![投影片 {closest_time:.1f}s]({img_relative})"
                                 img_inserted = True
@@ -378,17 +384,19 @@ class TranscriptSlidesProcessor:
             for line in lines:
                 img_inserted = False
                 
-                # 處理原始格式 [IMAGE: time]
+                # 處理原始格式 [IMAGE: time] (支援 t1m4.7s 格式)
                 if slide_images and '[IMAGE:' in line:
-                    match = re.search(r'\[IMAGE:\s*([\d.]+)\]', line)
+                    match = re.search(r'\[IMAGE:\s*([^\]]+)\]', line)
                     if match:
-                        target_time = float(match.group(1))
-                        # 找到最接近的圖片
-                        closest_time = min(slide_images.keys(), key=lambda x: abs(x - target_time))
-                        if abs(closest_time - target_time) < 30:  # 30秒容差
-                            img_path = slide_images[closest_time]
-                            if os.path.exists(img_path):
-                                try:
+                        time_str = match.group(1)
+                        target_time = self.parse_time_format(time_str)
+                        if target_time is not None:
+                            # 找到最接近的圖片
+                            closest_time = min(slide_images.keys(), key=lambda x: abs(x - target_time))
+                            if abs(closest_time - target_time) < 30:  # 30秒容差
+                                img_path = slide_images[closest_time]
+                                if os.path.exists(img_path):
+                                    try:
                                     doc.add_paragraph()  # 空行
                                     doc.add_picture(img_path, width=Inches(5.5))
                                     doc.add_paragraph()  # 空行

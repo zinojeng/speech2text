@@ -194,9 +194,13 @@ class MultiSlidesProcessor:
     def parse_time_format(self, time_str: str) -> Optional[float]:
         """
         解析各種時間格式
-        支援: "3m34.7s", "214.7", "214.7s"
+        支援: "3m34.7s", "214.7", "214.7s", "t1m4.7s"
         """
         import re
+        
+        # 移除開頭的 't' 前綴（如果存在）
+        if time_str.startswith('t'):
+            time_str = time_str[1:]
         
         # 純數字
         try:
@@ -333,14 +337,16 @@ class MultiSlidesProcessor:
                 for line in lines:
                     img_inserted = False
                     
-                    # 處理原始格式 [IMAGE: time]
+                    # 處理原始格式 [IMAGE: time] (支援 t1m4.7s 格式)
                     if '[IMAGE:' in line:
-                        match = re.search(r'\[IMAGE:\s*([\d.]+)\]', line)
+                        match = re.search(r'\[IMAGE:\s*([^\]]+)\]', line)
                         if match:
-                            target_time = float(match.group(1))
-                            img_inserted = self._insert_image_markdown(line, target_time, output_path.parent)
-                            if img_inserted:
-                                line = img_inserted
+                            time_str = match.group(1)
+                            target_time = self.parse_time_format(time_str)
+                            if target_time is not None:
+                                img_inserted = self._insert_image_markdown(line, target_time, output_path.parent)
+                                if img_inserted:
+                                    line = img_inserted
                     
                     # 處理 Gemini 生成的格式：> 🖼️ **投影片圖表說明**（[3m34.7s]）：
                     if not img_inserted and '🖼️' in line and '（[' in line and ']）' in line:
@@ -449,14 +455,16 @@ class MultiSlidesProcessor:
             for line in lines:
                 img_inserted = False
                 
-                # 處理原始格式 [IMAGE: time]
+                # 處理原始格式 [IMAGE: time] (支援 t1m4.7s 格式)
                 if self.all_slide_images and '[IMAGE:' in line:
-                    match = re.search(r'\[IMAGE:\s*([\d.]+)\]', line)
+                    match = re.search(r'\[IMAGE:\s*([^\]]+)\]', line)
                     if match:
-                        target_time = float(match.group(1))
-                        if self._insert_image_docx(doc, target_time):
-                            img_inserted = True
-                            continue  # 跳過這一行
+                        time_str = match.group(1)
+                        target_time = self.parse_time_format(time_str)
+                        if target_time is not None:
+                            if self._insert_image_docx(doc, target_time):
+                                img_inserted = True
+                                continue  # 跳過這一行
                 
                 # 處理 Gemini 生成的格式：> 🖼️ **投影片圖表說明**（[3m34.7s]）：
                 if self.all_slide_images and '🖼️' in line and '（[' in line and ']）' in line:
