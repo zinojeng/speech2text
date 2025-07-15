@@ -1,10 +1,10 @@
 # 音訊與文字處理程式使用指南
 
-本文件說明三個專為 ADA 2025 年會內容處理所開發的程式工具。
+本文件說明專為 ADA 2025 年會內容處理所開發的程式工具。
 
 ## 📋 程式總覽
 
-這三個程式形成完整的會議內容處理工作流程：
+這些程式形成完整的會議內容處理工作流程：
 
 ```
 音訊檔案 → [batch_audio_processor.py] → 轉錄文字
@@ -12,6 +12,8 @@
               [process_transcription.py] → 智能摘要
                         ↓
          [merge_transcript_slides.py] → 完整會議筆記
+                        ↓
+    [merge_transcript_multi_slides.py] → 多投影片整合筆記
 ```
 
 ---
@@ -130,6 +132,51 @@ python merge_transcript_slides.py transcription-34.txt slides.md output --images
 
 ---
 
+## 4. 🔄🔄 merge_transcript_multi_slides.py - 多投影片整合器（新）
+
+### 主要功能
+- 支援同時整合多個投影片檔案與演講稿
+- 每個投影片可以有對應的圖片資料夾
+- 智能合併多份內容，避免重複
+- 使用 Gemini-2.5-pro 進行整合
+- 生成包含所有內容的完整筆記
+
+### 使用方式
+```bash
+# 基本使用（多個投影片，無圖片）
+python merge_transcript_multi_slides.py transcript.txt slides1.md slides2.md
+
+# 指定輸出名稱
+python merge_transcript_multi_slides.py transcript.txt slides1.md slides2.md --output merged_notes
+
+# 單一投影片與圖片
+python merge_transcript_multi_slides.py transcript.txt slides1.md:images1/
+
+# 多個投影片與對應圖片
+python merge_transcript_multi_slides.py transcript.txt slides1.md:images1/ slides2.md:images2/ --output final
+
+# 混合使用（部分有圖片）
+python merge_transcript_multi_slides.py transcript.txt slides1.md slides2.md:images2/ slides3.md
+```
+
+### 特殊功能
+- **彈性輸入格式**：使用 `slides.md:images/` 格式指定圖片
+- **智能時間戳記處理**：自動避免多個投影片圖片的時間衝突
+- **流暢內容銜接**：確保多個投影片內容的自然過渡
+- **批次圖片處理**：支援處理總計數十張圖片
+
+### 輸出檔案
+- **Markdown**：`[名稱]_multi_merged.md`（含圖片連結）
+- **Word**：`[名稱]_multi_merged.docx`（含嵌入圖片）
+
+### 適用場景
+- 多位講者的聯合演講
+- 分段式的長時間演講
+- 需要整合多份相關投影片的會議
+- 工作坊或教學課程的完整記錄
+
+---
+
 ## 🔧 環境設定
 
 ### API 金鑰配置
@@ -200,6 +247,7 @@ python process_transcription.py "/path with spaces/file.txt"
 | batch_audio_processor.py | 音訊資料夾 | 轉錄文字 + Word | 批次音訊轉錄 |
 | process_transcription.py | 轉錄文字 | 摘要 MD + Word | 智能摘要生成 |
 | merge_transcript_slides.py | 演講稿 + 投影片 | 整合 MD + Word | 內容整合 |
+| merge_transcript_multi_slides.py | 演講稿 + 多投影片 | 整合 MD + Word | 多投影片整合 |
 
 ---
 
