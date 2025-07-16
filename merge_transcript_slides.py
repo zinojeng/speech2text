@@ -329,26 +329,34 @@ class TranscriptSlidesProcessor:
                     # 處理 Gemini 生成的格式：> 🖼️ **投影片圖表說明**（[時間戳]）：
                     # 支援多個時間戳，如：（[53m25.2s], [54m0.2s]）或（[53m25.2s] 與 [54m0.2s]）
                     if not img_inserted and '🖼️' in line:
-                        # 嘗試匹配中文括號格式
-                        bracket_match = re.search(r'（\[([^\)]+)\]）', line)
+                        logger.info(f"發現圖片標記行: {line}")
+                        # 嘗試多種括號格式
+                        # 格式1: （[0:38]）
+                        bracket_match = re.search(r'（\[([^\]]+)\]）', line)
                         if not bracket_match:
-                            # 嘗試匹配英文括號格式
-                            bracket_match = re.search(r'\(\[([^\)]+)\]\)', line)
+                            # 格式2: ([0:38])
+                            bracket_match = re.search(r'\(\[([^\]]+)\]\)', line)
+                        if not bracket_match:
+                            # 格式3: （[0:38]） 但可能有其他內容
+                            bracket_match = re.search(r'[（\(]\[([^\]]+)\][）\)]', line)
                         
                         if bracket_match:
                             # 提取括號內的所有內容
                             bracket_content = bracket_match.group(1)
+                            logger.info(f"提取到時間內容: {bracket_content}")
                             # 找出所有時間戳
                             time_matches = re.findall(r'\[?([^\[\],]+?)(?:\]|,|$)', bracket_content)
                             
                             for time_str in time_matches:
                                 # 清理時間字串
                                 time_str = time_str.strip().strip(']').strip()
+                                logger.info(f"處理時間字串: '{time_str}'")
                                 # 跳過非時間字串（如 "與"）
                                 if '與' in time_str or not any(c.isdigit() for c in time_str):
                                     continue
                                     
                                 target_time = self.parse_time_format(time_str)
+                                logger.info(f"解析時間結果: {target_time}")
                                 if target_time is not None:
                                     # 找到最接近的圖片
                                     closest_time = min(slide_images.keys(), key=lambda x: abs(x - target_time))
@@ -433,26 +441,34 @@ class TranscriptSlidesProcessor:
                 # 處理 Gemini 生成的格式：> 🖼️ **投影片圖表說明**（[時間戳]）：
                 # 支援多個時間戳，如：（[53m25.2s], [54m0.2s]）或（[53m25.2s] 與 [54m0.2s]）
                 if slide_images and '🖼️' in line:
-                    # 嘗試匹配中文括號格式
-                    bracket_match = re.search(r'（\[([^\)]+)\]）', line)
+                    logger.info(f"Word處理 - 發現圖片標記行: {line}")
+                    # 嘗試多種括號格式
+                    # 格式1: （[0:38]）
+                    bracket_match = re.search(r'（\[([^\]]+)\]）', line)
                     if not bracket_match:
-                        # 嘗試匹配英文括號格式
-                        bracket_match = re.search(r'\(\[([^\)]+)\]\)', line)
+                        # 格式2: ([0:38])
+                        bracket_match = re.search(r'\(\[([^\]]+)\]\)', line)
+                    if not bracket_match:
+                        # 格式3: （[0:38]） 但可能有其他內容
+                        bracket_match = re.search(r'[（\(]\[([^\]]+)\][）\)]', line)
                         
                     if bracket_match:
                         # 提取括號內的所有內容
                         bracket_content = bracket_match.group(1)
+                        logger.info(f"Word處理 - 提取到時間內容: {bracket_content}")
                         # 找出所有時間戳
                         time_matches = re.findall(r'\[?([^\[\],]+?)(?:\]|,|$)', bracket_content)
                         
                         for time_str in time_matches:
                             # 清理時間字串
                             time_str = time_str.strip().strip(']').strip()
+                            logger.info(f"Word處理 - 處理時間字串: '{time_str}'")
                             # 跳過非時間字串（如 "與"）
                             if '與' in time_str or not any(c.isdigit() for c in time_str):
                                 continue
                                 
                             target_time = self.parse_time_format(time_str)
+                            logger.info(f"Word處理 - 解析時間結果: {target_time}")
                             if target_time is not None:
                                 # 找到最接近的圖片
                                 closest_time = min(slide_images.keys(), key=lambda x: abs(x - target_time))
