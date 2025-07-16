@@ -120,7 +120,7 @@ class MultiSlidesProcessor:
     def __init__(self):
         """初始化處理器"""
         self.setup_api()
-        self.all_slide_images = {}  # 儲存所有投影片的圖片
+        self.all_slide_images = {}  # 儲存所有投影片的圖片 {time_sec: [(slide_index, img_path), ...]}
     
     def setup_api(self):
         """設定 Google Gemini API"""
@@ -194,7 +194,7 @@ class MultiSlidesProcessor:
     def parse_time_format(self, time_str: str) -> Optional[float]:
         """
         解析各種時間格式
-        支援: "3m34.7s", "214.7", "214.7s", "t1m4.7s"
+        支援: "3m34.7s", "214.7", "214.7s", "t1m4.7s", "0:38", "1:14"
         """
         import re
         
@@ -214,6 +214,13 @@ class MultiSlidesProcessor:
                 return float(time_str[:-1])
             except ValueError:
                 pass
+        
+        # M:SS 格式（如 0:38, 1:14）
+        match = re.match(r'(\d+):(\d+\.?\d*)', time_str)
+        if match:
+            minutes = int(match.group(1))
+            seconds = float(match.group(2))
+            return minutes * 60 + seconds
         
         # 分鐘格式
         match = re.match(r'(\d+)m([\d.]+)s', time_str)
@@ -248,12 +255,16 @@ class MultiSlidesProcessor:
             for img_path in glob.glob(os.path.join(images_folder, pattern)):
                 time_sec = self.parse_slide_time(os.path.basename(img_path))
                 if time_sec is not None:
-                    # 為每個投影片的圖片添加偏移，避免時間衝突
-                    adjusted_time = time_sec + (slide_index * 10000)  # 每個投影片偏移10000秒
-                    images[adjusted_time] = img_path
-                    self.all_slide_images[time_sec] = img_path  # 同時保存原始時間
+                    images[time_sec] = img_path
+                    # 使用列表來儲存多個投影片在相同時間的圖片
+                    if time_sec not in self.all_slide_images:
+                        self.all_slide_images[time_sec] = []
+                    self.all_slide_images[time_sec].append((slide_index, img_path))
         
         logger.info(f"從投影片 {slide_index+1} 載入了 {len(images)} 張圖片")
+        if images:
+            logger.debug(f"投影片 {slide_index+1} 圖片時間範圍: {min(images.keys()):.1f}s - {max(images.keys()):.1f}s")
+        logger.debug(f"總共儲存了 {len(self.all_slide_images)} 個不同時間點的圖片")
         return images
     
     def merge_with_gemini(self, transcript: str, slides_contents: List[Tuple[str, str, Optional[str]]]) -> str:
@@ -287,7 +298,9 @@ class MultiSlidesProcessor:
             
             # 載入圖片資訊
             if self.all_slide_images:
-                image_info = f"\n\n=== 投影片圖片資訊 ===\n共有 {len(self.all_slide_images)} 張投影片圖片。請在整合內容時，在適當的段落位置標記 [IMAGE: {{time}}] 來指示應該插入哪個時間點的圖片。"
+                total_images = sum(len(img_list) for img_list in self.all_slide_images.values())
+                image_info = f"\n\n=== 投影片圖片資訊 ===\n共有 {total_images} 張投影片圖片（{len(self.all_slide_images)} 個不同時間點）。請在整合內容時，在適當的段落位置標記 [IMAGE: {{time}}] 來指示應該插入哪個時間點的圖片。"
+                logger.info(f"總共載入 {total_images} 張圖片，分佈在 {len(self.all_slide_images)} 個時間點")
             
             # 構建提示詞
             user_prompt = f"""請根據以下演講稿和多個投影片內容，創建一份整合的會議筆記：
@@ -330,7 +343,8 @@ class MultiSlidesProcessor:
             
             # 處理圖片標記，替換為實際的 Markdown 圖片語法
             if self.all_slide_images:
-                logger.info(f"處理 Markdown 中的圖片標記，共有 {len(self.all_slide_images)} 張圖片")
+                total_images = sum(len(img_list) for img_list in self.all_slide_images.values())
+                logger.info(f"處理 Markdown 中的圖片標記，共有 {total_images} 張圖片在 {len(self.all_slide_images)} 個時間點")
                 lines = content.split('\n')
                 processed_lines = []
                 
@@ -407,11 +421,16 @@ class MultiSlidesProcessor:
         closest_time = min(self.all_slide_images.keys(), 
                          key=lambda x: abs(x - target_time))
         if abs(closest_time - target_time) < 30:  # 30秒容差
-            img_path = self.all_slide_images[closest_time]
-            # 轉換為相對路徑
-            img_relative = os.path.relpath(img_path, base_path)
-            logger.info(f"插入圖片: {target_time}s -> {os.path.basename(img_path)}")
-            return f"![投影片 {closest_time:.1f}s]({img_relative})"
+            # 從列表中選擇最合適的圖片
+            slide_images = self.all_slide_images[closest_time]
+            if slide_images:
+                # 如果有多個圖片，優先選擇較早的投影片（按slide_index排序）
+                slide_images_sorted = sorted(slide_images, key=lambda x: x[0])
+                slide_index, img_path = slide_images_sorted[0]
+                # 轉換為相對路徑
+                img_relative = os.path.relpath(img_path, base_path)
+                logger.info(f"插入圖片: {target_time}s -> {os.path.basename(img_path)} (投影片 {slide_index+1})")
+                return f"![投影片 {closest_time:.1f}s]({img_relative})"
         return None
     
     def _insert_image_docx(self, doc: Document, target_time: float) -> bool:
@@ -428,16 +447,21 @@ class MultiSlidesProcessor:
         closest_time = min(self.all_slide_images.keys(), 
                          key=lambda x: abs(x - target_time))
         if abs(closest_time - target_time) < 30:  # 30秒容差
-            img_path = self.all_slide_images[closest_time]
-            if os.path.exists(img_path):
-                try:
-                    doc.add_paragraph()  # 空行
-                    doc.add_picture(img_path, width=Inches(5.5))
-                    doc.add_paragraph()  # 空行
-                    logger.info(f"插入圖片到 Word: {os.path.basename(img_path)} (時間: {closest_time}秒)")
-                    return True
-                except Exception as e:
-                    logger.warning(f"插入圖片失敗: {e}")
+            # 從列表中選擇最合適的圖片
+            slide_images = self.all_slide_images[closest_time]
+            if slide_images:
+                # 如果有多個圖片，優先選擇較早的投影片（按slide_index排序）
+                slide_images_sorted = sorted(slide_images, key=lambda x: x[0])
+                slide_index, img_path = slide_images_sorted[0]
+                if os.path.exists(img_path):
+                    try:
+                        doc.add_paragraph()  # 空行
+                        doc.add_picture(img_path, width=Inches(5.5))
+                        doc.add_paragraph()  # 空行
+                        logger.info(f"插入圖片到 Word: {os.path.basename(img_path)} (時間: {closest_time}秒, 投影片 {slide_index+1})")
+                        return True
+                    except Exception as e:
+                        logger.warning(f"插入圖片失敗: {e}")
         return False
     
     def markdown_to_docx(self, markdown_text: str, output_path: str) -> bool:
