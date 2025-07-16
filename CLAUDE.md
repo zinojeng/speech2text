@@ -171,3 +171,36 @@ Default model hierarchy:
 4. ElevenLabs (premium features like diarization)
 
 Cost considerations built into `utils.py` with token counting and price estimation per model.
+
+## Troubleshooting
+
+### Multi-Slide Image Display Issues
+
+When processing multiple slides with their respective image folders, images may not display properly. This has been fixed in `merge_transcript_multi_slides.py`:
+
+**Previous Issue**: Images from different slides with the same timestamp would overwrite each other, causing only the last slide's images to be available.
+
+**Solution Implemented**:
+1. Changed image storage structure from `{time: img_path}` to `{time: [(slide_index, img_path), ...]}`
+2. Removed the confusing 10000-second offset mechanism
+3. Images are now stored with their actual timestamps and slide associations
+4. When multiple slides have images at the same timestamp, the system selects the image from the earliest slide
+
+**Usage for Multiple Slides with Images**:
+```bash
+# Interactive mode (recommended)
+./interactive_merge.sh
+
+# Command line
+python merge_transcript_multi_slides.py transcript.txt \
+  "slide1.md:images1/" \
+  "slide2.md:images2/" \
+  "slide3.md:images3/" \
+  --output merged_output
+```
+
+**Debugging Image Issues**:
+- Check logs for "載入了 X 張圖片" messages for each slide
+- Verify image filenames follow the pattern: `slide_XXX_tXmYs.jpg`
+- Ensure image folders are correctly specified with colon separator
+- Look for "插入圖片" log entries to confirm successful insertion
