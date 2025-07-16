@@ -67,7 +67,7 @@ SUPPORTED_TEXT_FORMATS = [
 # 系統提示詞
 SYSTEM_PROMPT = """This is American Diabetes Association 2025年會，聚焦在糖尿病，代謝，肥胖等等主題。優化演講者 transcribe content 成完整的筆記.
 
-rewrite or 順暢演講者內容，並儘可能完整呈現，加入一些粗體或底線來呈現重點，或加入小結來總結或延伸您的想法。 並依使用者提供的 agenda 整理。as detail , professional and comprehensive as you can in zh-tw
+rewrite or 順暢演講者內容，100%儘可能完整呈現，加入一些粗體或底線來呈現重點，或加入小結來總結或延伸您的想法。 並依使用者提供的 agenda 整理。as detail , professional and comprehensive as you can in zh-tw
 
 依以下的 agenda 來分主要段落。"""
 
@@ -297,14 +297,61 @@ class BatchAudioProcessor:
         logger.warning(f"未找到議程檔案: {audio_stem}")
         return None
     
+    def insert_images_for_gemini(self, text: str, audio_folder: str) -> str:
+        """
+        在 Gemini 生成的文字中插入對應的投影片圖片
+        
+        Args:
+            text: Gemini 生成的文字
+            audio_folder: 音訊檔案所在的資料夾路徑
+            
+        Returns:
+            插入圖片後的文字
+        """
+        # 尋找所有圖片標記
+        # 匹配格式: [IMAGE: slide006t0m52.2s_hdab743c2.jpg]
+        pattern = r'\[IMAGE:\s*slide(\d{3})t(\d+)m(\d+\.?\d*)s_h([a-f0-9]+)\.jpg\]'
+        
+        def replace_image_marker(match):
+            slide_num = match.group(1)
+            minutes = match.group(2)
+            seconds = match.group(3)
+            hash_part = match.group(4)
+            
+            # 構建實際的檔名格式: slide_006_t0m52.2s_hdab743c2.jpg
+            actual_filename = f"slide_{slide_num}_t{minutes}m{seconds}s_h{hash_part}.jpg"
+            image_path = os.path.join(audio_folder, actual_filename)
+            
+            # 檢查檔案是否存在
+            if os.path.exists(image_path):
+                logger.info(f"找到圖片: {actual_filename}")
+                # 返回 Markdown 格式的圖片連結
+                return f"![Slide {int(slide_num)}]({actual_filename})"
+            else:
+                logger.warning(f"找不到圖片: {image_path}")
+                # 保持原始標記
+                return match.group(0)
+        
+        # 替換所有圖片標記
+        result = re.sub(pattern, replace_image_marker, text)
+        
+        # 記錄替換數量
+        original_count = len(re.findall(pattern, text))
+        if original_count > 0:
+            logger.info(f"處理了 {original_count} 個圖片標記")
+        
+        return result
+
     def summarize_with_gemini(self, transcript: str,
-                              agenda: Optional[str] = None) -> Optional[str]:
+                              agenda: Optional[str] = None,
+                              audio_folder: Optional[str] = None) -> Optional[str]:
         """
         使用 Gemini 2.5 Pro 進行摘要處理
 
         Args:
             transcript: 轉錄文字
             agenda: 議程內容
+            audio_folder: 音訊檔案所在的資料夾路徑（用於圖片插入）
 
         Returns:
             摘要文字，失敗時返回 None
@@ -312,8 +359,8 @@ class BatchAudioProcessor:
         try:
             logger.info("開始使用 Gemini 2.5 Pro 進行摘要處理")
 
-            # 建立模型 - 使用最新的 Gemini 2.5 Pro
-            model = genai.GenerativeModel('gemini-2.5-pro')
+            # 建立模型
+            model = genai.GenerativeModel('gemini-2.5-pro-preview-06-05')
 
             # 構建提示詞
             user_prompt = f"""請根據以下轉錄內容進行摘要處理：
@@ -337,6 +384,12 @@ class BatchAudioProcessor:
 
             summary = response.text
             logger.info(f"摘要完成，長度: {len(summary)}")
+            
+            # 如果提供了音訊資料夾路徑，則插入圖片
+            if audio_folder:
+                summary = self.insert_images_for_gemini(summary, audio_folder)
+                logger.info("圖片插入處理完成")
+            
             return summary
 
         except Exception as e:
@@ -453,7 +506,9 @@ class BatchAudioProcessor:
             agenda = self.read_agenda_file(audio_path, text_files)
 
             # 3. 生成摘要
-            summary = self.summarize_with_gemini(transcript, agenda)
+            # 取得音訊檔案所在的資料夾路徑
+            audio_folder = os.path.dirname(audio_path)
+            summary = self.summarize_with_gemini(transcript, agenda, audio_folder)
             if not summary:
                 result['error'] = "摘要處理失敗"
                 return result

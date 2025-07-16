@@ -303,9 +303,8 @@ class TranscriptSlidesProcessor:
                     
                     # 處理原始格式 [IMAGE: time] (支援 t1m4.7s 格式)
                     if '[IMAGE:' in line:
-                        match = re.search(r'\[IMAGE:\s*([^\]]+)\]', line)
-                        if match:
-                            time_str = match.group(1)
+                        matches = re.findall(r'\[IMAGE:\s*([^\]]+)\]', line)
+                        for time_str in matches:
                             target_time = self.parse_time_format(time_str)
                             if target_time is not None:
                                 # 找到最接近的圖片
@@ -314,33 +313,45 @@ class TranscriptSlidesProcessor:
                                     img_path = slide_images[closest_time]
                                     # 轉換為相對路徑
                                     img_relative = os.path.relpath(img_path, output_path.parent)
-                                # 替換為 Markdown 圖片語法
-                                line = f"![投影片 {closest_time:.1f}s]({img_relative})"
-                                img_inserted = True
-                                logger.info(f"替換圖片標記: {target_time}s -> {os.path.basename(img_path)}")
+                                    # 替換為 Markdown 圖片語法
+                                    line = f"![投影片 {closest_time:.1f}s]({img_relative})"
+                                    img_inserted = True
+                                    logger.info(f"替換圖片標記: {target_time}s -> {os.path.basename(img_path)}")
                     
-                    # 處理 Gemini 生成的格式：> 🖼️ **投影片圖表說明**（[3m34.7s]）：或 ([t3m34.7s]):
+                    # 處理 Gemini 生成的格式：> 🖼️ **投影片圖表說明**（[時間戳]）：
+                    # 支援多個時間戳，如：（[53m25.2s], [54m0.2s]）或（[53m25.2s] 與 [54m0.2s]）
                     if not img_inserted and '🖼️' in line:
                         # 嘗試匹配中文括號格式
-                        match = re.search(r'（\[([^\]]+)\]）', line)
-                        if not match:
+                        bracket_match = re.search(r'（\[([^\)]+)\]）', line)
+                        if not bracket_match:
                             # 嘗試匹配英文括號格式
-                            match = re.search(r'\(\[([^\]]+)\]\)', line)
+                            bracket_match = re.search(r'\(\[([^\)]+)\]\)', line)
                         
-                        if match:
-                            time_str = match.group(1)
-                            target_time = self.parse_time_format(time_str)
-                            if target_time is not None:
-                                # 找到最接近的圖片
-                                closest_time = min(slide_images.keys(), key=lambda x: abs(x - target_time))
-                                if abs(closest_time - target_time) < 30:  # 30秒容差
-                                    img_path = slide_images[closest_time]
-                                    # 轉換為相對路徑
-                                    img_relative = os.path.relpath(img_path, output_path.parent)
-                                    # 在此行之前插入圖片
-                                    processed_lines.append(f"![投影片 {closest_time:.1f}s]({img_relative})")
-                                    processed_lines.append('')  # 空行
-                                    logger.info(f"插入圖片: {target_time}s -> {os.path.basename(img_path)}")
+                        if bracket_match:
+                            # 提取括號內的所有內容
+                            bracket_content = bracket_match.group(1)
+                            # 找出所有時間戳
+                            time_matches = re.findall(r'\[?([^\[\],]+?)(?:\]|,|$)', bracket_content)
+                            
+                            for time_str in time_matches:
+                                # 清理時間字串
+                                time_str = time_str.strip().strip(']').strip()
+                                # 跳過非時間字串（如 "與"）
+                                if '與' in time_str or not any(c.isdigit() for c in time_str):
+                                    continue
+                                    
+                                target_time = self.parse_time_format(time_str)
+                                if target_time is not None:
+                                    # 找到最接近的圖片
+                                    closest_time = min(slide_images.keys(), key=lambda x: abs(x - target_time))
+                                    if abs(closest_time - target_time) < 30:  # 30秒容差
+                                        img_path = slide_images[closest_time]
+                                        # 轉換為相對路徑
+                                        img_relative = os.path.relpath(img_path, output_path.parent)
+                                        # 在此行之前插入圖片
+                                        processed_lines.append(f"![投影片 {closest_time:.1f}s]({img_relative})")
+                                        processed_lines.append('')  # 空行
+                                        logger.info(f"插入圖片: {target_time}s -> {os.path.basename(img_path)}")
                     
                     processed_lines.append(line)
                 
@@ -391,37 +402,8 @@ class TranscriptSlidesProcessor:
                 
                 # 處理原始格式 [IMAGE: time] (支援 t1m4.7s 格式)
                 if slide_images and '[IMAGE:' in line:
-                    match = re.search(r'\[IMAGE:\s*([^\]]+)\]', line)
-                    if match:
-                        time_str = match.group(1)
-                        target_time = self.parse_time_format(time_str)
-                        if target_time is not None:
-                            # 找到最接近的圖片
-                            closest_time = min(slide_images.keys(), key=lambda x: abs(x - target_time))
-                            if abs(closest_time - target_time) < 30:  # 30秒容差
-                                img_path = slide_images[closest_time]
-                                if os.path.exists(img_path):
-                                    try:
-                                    doc.add_paragraph()  # 空行
-                                    doc.add_picture(img_path, width=Inches(5.5))
-                                    doc.add_paragraph()  # 空行
-                                    logger.info(f"插入圖片: {os.path.basename(img_path)} (時間: {closest_time}秒)")
-                                    img_inserted = True
-                                except Exception as e:
-                                    logger.warning(f"插入圖片失敗: {e}")
-                        if img_inserted:
-                            continue  # 跳過這一行
-                
-                # 處理 Gemini 生成的格式：> 🖼️ **投影片圖表說明**（[3m34.7s]）：或 ([t3m34.7s]):
-                if slide_images and '🖼️' in line:
-                    # 嘗試匹配中文括號格式
-                    match = re.search(r'（\[([^\]]+)\]）', line)
-                    if not match:
-                        # 嘗試匹配英文括號格式
-                        match = re.search(r'\(\[([^\]]+)\]\)', line)
-                        
-                    if match:
-                        time_str = match.group(1)
+                    matches = re.findall(r'\[IMAGE:\s*([^\]]+)\]', line)
+                    for time_str in matches:
                         target_time = self.parse_time_format(time_str)
                         if target_time is not None:
                             # 找到最接近的圖片
@@ -437,6 +419,46 @@ class TranscriptSlidesProcessor:
                                         img_inserted = True
                                     except Exception as e:
                                         logger.warning(f"插入圖片失敗: {e}")
+                    if img_inserted:
+                        continue  # 跳過這一行
+                
+                # 處理 Gemini 生成的格式：> 🖼️ **投影片圖表說明**（[時間戳]）：
+                # 支援多個時間戳，如：（[53m25.2s], [54m0.2s]）或（[53m25.2s] 與 [54m0.2s]）
+                if slide_images and '🖼️' in line:
+                    # 嘗試匹配中文括號格式
+                    bracket_match = re.search(r'（\[([^\)]+)\]）', line)
+                    if not bracket_match:
+                        # 嘗試匹配英文括號格式
+                        bracket_match = re.search(r'\(\[([^\)]+)\]\)', line)
+                        
+                    if bracket_match:
+                        # 提取括號內的所有內容
+                        bracket_content = bracket_match.group(1)
+                        # 找出所有時間戳
+                        time_matches = re.findall(r'\[?([^\[\],]+?)(?:\]|,|$)', bracket_content)
+                        
+                        for time_str in time_matches:
+                            # 清理時間字串
+                            time_str = time_str.strip().strip(']').strip()
+                            # 跳過非時間字串（如 "與"）
+                            if '與' in time_str or not any(c.isdigit() for c in time_str):
+                                continue
+                                
+                            target_time = self.parse_time_format(time_str)
+                            if target_time is not None:
+                                # 找到最接近的圖片
+                                closest_time = min(slide_images.keys(), key=lambda x: abs(x - target_time))
+                                if abs(closest_time - target_time) < 30:  # 30秒容差
+                                    img_path = slide_images[closest_time]
+                                    if os.path.exists(img_path):
+                                        try:
+                                            doc.add_paragraph()  # 空行
+                                            doc.add_picture(img_path, width=Inches(5.5))
+                                            doc.add_paragraph()  # 空行
+                                            logger.info(f"插入圖片: {os.path.basename(img_path)} (時間: {closest_time}秒)")
+                                            img_inserted = True
+                                        except Exception as e:
+                                            logger.warning(f"插入圖片失敗: {e}")
                 line = line.strip()
                 if not line:
                     doc.add_paragraph()  # 空行

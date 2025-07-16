@@ -335,36 +335,49 @@ class MultiSlidesProcessor:
                 processed_lines = []
                 
                 for line in lines:
-                    img_inserted = False
+                    # 用於收集該行所有圖片
+                    images_to_insert = []
                     
                     # 處理原始格式 [IMAGE: time] (支援 t1m4.7s 格式)
                     if '[IMAGE:' in line:
-                        match = re.search(r'\[IMAGE:\s*([^\]]+)\]', line)
-                        if match:
-                            time_str = match.group(1)
+                        matches = re.findall(r'\[IMAGE:\s*([^\]]+)\]', line)
+                        for time_str in matches:
                             target_time = self.parse_time_format(time_str)
                             if target_time is not None:
-                                img_inserted = self._insert_image_markdown(line, target_time, output_path.parent)
-                                if img_inserted:
-                                    line = img_inserted
-                    
-                    # 處理 Gemini 生成的格式：> 🖼️ **投影片圖表說明**（[3m34.7s]）：或 ([t3m34.7s]):
-                    if not img_inserted and '🖼️' in line:
-                        # 嘗試匹配中文括號格式
-                        match = re.search(r'（\[([^\]]+)\]）', line)
-                        if not match:
-                            # 嘗試匹配英文括號格式 
-                            match = re.search(r'\(\[([^\]]+)\]\)', line)
-                        
-                        if match:
-                            time_str = match.group(1)
-                            target_time = self.parse_time_format(time_str)
-                            if target_time is not None:
-                                # 在此行之前插入圖片
                                 img_line = self._insert_image_markdown('', target_time, output_path.parent)
                                 if img_line:
-                                    processed_lines.append(img_line)
-                                    processed_lines.append('')  # 空行
+                                    images_to_insert.append(img_line)
+                    
+                    # 處理 Gemini 生成的格式：> 🖼️ **投影片圖表說明**（[時間戳]）：
+                    # 支援多個時間戳，如：（[53m25.2s], [54m0.2s]）或（[53m25.2s] 與 [54m0.2s]）
+                    if '🖼️' in line:
+                        # 嘗試匹配中文括號格式
+                        bracket_match = re.search(r'（\[([^\)]+)\]）', line)
+                        if not bracket_match:
+                            # 嘗試匹配英文括號格式
+                            bracket_match = re.search(r'\(\[([^\)]+)\]\)', line)
+                        
+                        if bracket_match:
+                            # 提取括號內的所有內容
+                            bracket_content = bracket_match.group(1)
+                            # 找出所有時間戳
+                            time_matches = re.findall(r'\[?([^\[\],]+?)(?:\]|,|$)', bracket_content)
+                            
+                            for time_str in time_matches:
+                                # 清理時間字串
+                                time_str = time_str.strip().strip(']').strip()
+                                if time_str and time_str not in ['與', 'and', '和']:  # 排除連接詞
+                                    target_time = self.parse_time_format(time_str)
+                                    if target_time is not None:
+                                        img_line = self._insert_image_markdown('', target_time, output_path.parent)
+                                        if img_line:
+                                            images_to_insert.append(img_line)
+                    
+                    # 插入所有找到的圖片
+                    if images_to_insert:
+                        for img in images_to_insert:
+                            processed_lines.append(img)
+                        processed_lines.append('')  # 空行
                     
                     processed_lines.append(line)
                 
@@ -458,34 +471,47 @@ class MultiSlidesProcessor:
             lines = markdown_text.split('\n')
             
             for line in lines:
-                img_inserted = False
+                # 用於收集該行所有圖片
+                images_inserted = []
                 
                 # 處理原始格式 [IMAGE: time] (支援 t1m4.7s 格式)
                 if self.all_slide_images and '[IMAGE:' in line:
-                    match = re.search(r'\[IMAGE:\s*([^\]]+)\]', line)
-                    if match:
-                        time_str = match.group(1)
+                    matches = re.findall(r'\[IMAGE:\s*([^\]]+)\]', line)
+                    for time_str in matches:
                         target_time = self.parse_time_format(time_str)
                         if target_time is not None:
                             if self._insert_image_docx(doc, target_time):
-                                img_inserted = True
-                                continue  # 跳過這一行
+                                images_inserted.append(target_time)
+                    
+                    # 如果插入了圖片，跳過這一行文字
+                    if images_inserted and '[IMAGE:' in line and line.strip().startswith('[IMAGE:'):
+                        continue
                 
-                # 處理 Gemini 生成的格式：> 🖼️ **投影片圖表說明**（[3m34.7s]）：或 ([t3m34.7s]):
+                # 處理 Gemini 生成的格式：> 🖼️ **投影片圖表說明**（[時間戳]）：
+                # 支援多個時間戳，如：（[53m25.2s], [54m0.2s]）或（[53m25.2s] 與 [54m0.2s]）
                 if self.all_slide_images and '🖼️' in line:
                     # 嘗試匹配中文括號格式
-                    match = re.search(r'（\[([^\]]+)\]）', line)
-                    if not match:
+                    bracket_match = re.search(r'（\[([^\)]+)\]）', line)
+                    if not bracket_match:
                         # 嘗試匹配英文括號格式
-                        match = re.search(r'\(\[([^\]]+)\]\)', line)
+                        bracket_match = re.search(r'\(\[([^\)]+)\]\)', line)
                     
-                    if match:
-                        time_str = match.group(1)
-                        target_time = self.parse_time_format(time_str)
-                        if target_time is not None:
-                            if self._insert_image_docx(doc, target_time):
-                                img_inserted = True
-                                # 繼續處理此行文字（但不包含圖片標記）
+                    if bracket_match:
+                        # 提取括號內的所有內容
+                        bracket_content = bracket_match.group(1)
+                        # 找出所有時間戳
+                        time_matches = re.findall(r'\[?([^\[\],]+?)(?:\]|,|$)', bracket_content)
+                        
+                        for time_str in time_matches:
+                            # 清理時間字串
+                            time_str = time_str.strip().strip(']').strip()
+                            if time_str and time_str not in ['與', 'and', '和']:  # 排除連接詞
+                                target_time = self.parse_time_format(time_str)
+                                if target_time is not None:
+                                    if self._insert_image_docx(doc, target_time):
+                                        images_inserted.append(target_time)
+                    
+                    # 繼續處理此行文字（但不包含圖片標記）
                 
                 line = line.strip()
                 if not line:
