@@ -339,6 +339,49 @@ if [ $? -eq 0 ]; then
     echo -e "${GREEN}✓ 合併完成！${NC}"
     echo -e "${GREEN}=================================================${NC}"
     echo ""
+    
+    # 自動修復 DOCX 圖片（如果是多投影片模式且有圖片）
+    if [ "$MULTI_SLIDES" = true ] && [ $total_images -gt 0 ]; then
+        echo -e "${CYAN}正在檢查並修復 DOCX 中的圖片...${NC}"
+        echo ""
+        
+        # 建立預期的輸出檔名
+        if [ -n "$OUTPUT_NAME" ]; then
+            DOCX_FILE="${OUTPUT_NAME}_multi_merged.docx"
+        else
+            # 使用演講稿檔名作為基礎
+            TRANSCRIPT_BASE=$(basename "$TRANSCRIPT_FILE" .txt)
+            DOCX_FILE="${TRANSCRIPT_BASE}_multi_merged.docx"
+        fi
+        
+        # 建立完整路徑
+        DOCX_PATH="$(dirname "$TRANSCRIPT_FILE")/$DOCX_FILE"
+        
+        # 檢查 DOCX 是否存在
+        if [ -f "$DOCX_PATH" ]; then
+            # 檢查是否有修復腳本
+            if [ -f "fix_merged_docx_images.py" ]; then
+                echo -e "${YELLOW}執行圖片修復...${NC}"
+                
+                # 執行修復
+                $PYTHON_CMD fix_merged_docx_images.py "$DOCX_PATH"
+                
+                if [ $? -eq 0 ]; then
+                    echo ""
+                    echo -e "${GREEN}✓ 圖片修復完成！${NC}"
+                    echo -e "${CYAN}請檢查 .fixed_images.docx 檔案${NC}"
+                else
+                    echo -e "${YELLOW}圖片修復遇到問題，但合併已完成${NC}"
+                fi
+            else
+                echo -e "${YELLOW}找不到 fix_merged_docx_images.py，跳過圖片修復${NC}"
+            fi
+        else
+            echo -e "${YELLOW}找不到輸出的 DOCX 檔案：$DOCX_FILE${NC}"
+        fi
+        echo ""
+    fi
+    
     echo -e "${CYAN}提示：請檢查輸出的 .md 和 .docx 檔案${NC}"
 else
     echo ""

@@ -103,13 +103,16 @@ SYSTEM_PROMPT = """你是一位專業的醫學會議內容編輯，專精於整�
 
 **圖片整合方式：**
 當提供投影片圖片時，請：
-1. 根據時間戳記在適當位置插入圖片分析
-2. 使用以下格式：
-   > 🖼️ **投影片圖表說明**（[時間]）：
-   > [圖片分析內容]
-   > __[與演講內容的關聯或延伸解讀]__
-3. 確保圖片分析與演講內容相互呼應
-4. 不要重複已在演講中詳細說明的圖表內容
+1. 根據時間戳記在適當位置插入圖片標記
+2. 使用以下兩種格式之一：
+   - 簡單標記：[IMAGE: MM:SS] 或 [IMAGE: HH:MM:SS]
+   - 帶說明標記：
+     > 🖼️ **投影片圖表說明**（HH:MM:SS）：
+     > [圖片分析內容]
+     > __[與演講內容的關聯或延伸解讀]__
+3. 重要：只使用時間格式，不要使用檔名（如 slide001.jpg）
+4. 確保圖片分析與演講內容相互呼應
+5. 不要重複已在演講中詳細說明的圖表內容
 
 請確保輸出是一份完整、專業、資訊豐富的會議筆記。"""
 
@@ -194,7 +197,7 @@ class MultiSlidesProcessor:
     def parse_time_format(self, time_str: str) -> Optional[float]:
         """
         解析各種時間格式
-        支援: "3m34.7s", "214.7", "214.7s", "t1m4.7s", "0:38", "1:14"
+        支援: "3m34.7s", "214.7", "214.7s", "t1m4.7s", "0:38", "1:14", "00:04:28"
         """
         import re
         
@@ -214,6 +217,14 @@ class MultiSlidesProcessor:
                 return float(time_str[:-1])
             except ValueError:
                 pass
+        
+        # HH:MM:SS 格式（如 00:04:28）
+        match = re.match(r'(\d{1,2}):(\d{2}):(\d{2})', time_str)
+        if match:
+            hours = int(match.group(1))
+            minutes = int(match.group(2))
+            seconds = int(match.group(3))
+            return hours * 3600 + minutes * 60 + seconds
         
         # M:SS 格式（如 0:38, 1:14）
         match = re.match(r'(\d+):(\d+\.?\d*)', time_str)
@@ -299,7 +310,7 @@ class MultiSlidesProcessor:
             # 載入圖片資訊
             if self.all_slide_images:
                 total_images = sum(len(img_list) for img_list in self.all_slide_images.values())
-                image_info = f"\n\n=== 投影片圖片資訊 ===\n共有 {total_images} 張投影片圖片（{len(self.all_slide_images)} 個不同時間點）。請在整合內容時，在適當的段落位置標記 [IMAGE: {{time}}] 來指示應該插入哪個時間點的圖片。"
+                image_info = f"\n\n=== 投影片圖片資訊 ===\n共有 {total_images} 張投影片圖片（{len(self.all_slide_images)} 個不同時間點）。\n重要：請在整合內容時，使用以下格式插入圖片：\n1. 對於有時間戳的圖片：使用 [IMAGE: 時間] 格式，例如 [IMAGE: 3m28s] 或 [IMAGE: 00:03:28]\n2. 不要使用檔名格式如 [IMAGE: slide001.jpg]\n3. 時間格式可以是 MM:SS 或 HH:MM:SS"
                 logger.info(f"總共載入 {total_images} 張圖片，分佈在 {len(self.all_slide_images)} 個時間點")
             
             # 構建提示詞
@@ -464,6 +475,45 @@ class MultiSlidesProcessor:
                         logger.warning(f"插入圖片失敗: {e}")
         return False
     
+    def _insert_image_docx_by_path(self, doc: Document, img_path: str) -> bool:
+        """
+        在 Word 文件中根據路徑插入圖片
+        
+        Args:
+            doc: Word document object
+            img_path: Image file path (can be relative or contain folder)
+            
+        Returns:
+            是否成功插入
+        """
+        # Try to find the image in various locations
+        possible_paths = []
+        
+        # Direct path
+        possible_paths.append(img_path)
+        
+        # If it's a relative path with folder
+        if '/' in img_path:
+            # Try from current directory
+            possible_paths.append(Path.cwd() / img_path)
+            # Try from document directory (if we know it)
+            possible_paths.append(Path(img_path))
+        
+        # Try each possible path
+        for path in possible_paths:
+            if os.path.exists(path):
+                try:
+                    doc.add_paragraph()  # 空行
+                    doc.add_picture(str(path), width=Inches(5.5))
+                    doc.add_paragraph()  # 空行
+                    logger.info(f"插入圖片到 Word: {path}")
+                    return True
+                except Exception as e:
+                    logger.warning(f"插入圖片失敗 {path}: {e}")
+        
+        logger.warning(f"找不到圖片: {img_path}")
+        return False
+    
     def markdown_to_docx(self, markdown_text: str, output_path: str) -> bool:
         """
         將 Markdown 文字轉換為保留格式的 Word 文件
@@ -499,13 +549,21 @@ class MultiSlidesProcessor:
                 images_inserted = []
                 
                 # 處理原始格式 [IMAGE: time] (支援 t1m4.7s 格式)
-                if self.all_slide_images and '[IMAGE:' in line:
+                # 也支援 [IMAGE: folder/filename.jpg] 格式
+                if '[IMAGE:' in line:
                     matches = re.findall(r'\[IMAGE:\s*([^\]]+)\]', line)
-                    for time_str in matches:
-                        target_time = self.parse_time_format(time_str)
-                        if target_time is not None:
-                            if self._insert_image_docx(doc, target_time):
-                                images_inserted.append(target_time)
+                    for match in matches:
+                        # Check if it's a file path (contains / or .)
+                        if '/' in match or '.' in match:
+                            # It's a file path
+                            if self._insert_image_docx_by_path(doc, match):
+                                images_inserted.append(match)
+                        else:
+                            # It's a timestamp
+                            target_time = self.parse_time_format(match)
+                            if target_time is not None and self.all_slide_images:
+                                if self._insert_image_docx(doc, target_time):
+                                    images_inserted.append(target_time)
                     
                     # 如果插入了圖片，跳過這一行文字
                     if images_inserted and '[IMAGE:' in line and line.strip().startswith('[IMAGE:'):
