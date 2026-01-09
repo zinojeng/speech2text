@@ -13,7 +13,8 @@ WORKDIR /src
 
 # 複製requirements.txt並安裝Python依賴
 COPY requirements.txt .
-RUN pip install --upgrade pip && pip install --no-cache-dir -r requirements.txt
+RUN pip install --upgrade pip --root-user-action=ignore && \
+    pip install --no-cache-dir --root-user-action=ignore -r requirements.txt
 
 # 複製應用程式碼
 COPY . .
