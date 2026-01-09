@@ -4,6 +4,8 @@ import logging
 import tempfile
 import time
 import base64
+import shutil
+import subprocess
 
 # 第三方庫導入
 import streamlit as st
@@ -164,6 +166,221 @@ SUPPORTED_FILE_TYPES = [
     "xlsx", "xls", "csv", "txt", "rtf", 
     "html", "htm", "md", "markdown"
 ]
+
+# 支援的影片格式
+SUPPORTED_VIDEO_FORMATS = ["mp4", "avi", "mkv", "mov", "webm", "flv", "wmv"]
+
+def extract_audio_from_video(video_path: str, output_path: str = None, audio_format: str = "mp3") -> tuple:
+    """
+    從影片檔案中提取音訊
+    
+    Args:
+        video_path: 影片檔案路徑
+        output_path: 輸出音訊檔案路徑，預設為原影片名稱加上音訊格式後綴
+        audio_format: 輸出音訊格式，預設為 mp3
+        
+    Returns:
+        tuple: (success: bool, output_file_or_error: str)
+    """
+    moviepy_error = None
+    
+    # 如果未指定輸出路徑，使用預設路徑
+    if not output_path:
+        base_name = os.path.splitext(video_path)[0]
+        output_path = f"{base_name}.{audio_format}"
+    
+    # 先嘗試使用 MoviePy
+    try:
+        from moviepy.editor import VideoFileClip
+        
+        with VideoFileClip(video_path) as video_clip:
+            audio_clip = video_clip.audio
+            if audio_clip is None:
+                raise ValueError("影片不含音訊軌道")
+            try:
+                audio_clip.write_audiofile(output_path, logger=None)
+            finally:
+                audio_clip.close()
+        return True, output_path
+    except ImportError:
+        moviepy_error = "MoviePy 未安裝"
+    except Exception as exc:
+        moviepy_error = str(exc)
+    
+    # MoviePy 失敗時，改用 ffmpeg 指令
+    if moviepy_error:
+        ffmpeg_path = shutil.which("ffmpeg")
+        if not ffmpeg_path:
+            return False, f"音訊提取失敗 (MoviePy): {moviepy_error}; 並且系統未找到 ffmpeg"
+        
+        # 根據格式設定編碼器
+        codec_map = {
+            "mp3": ["libmp3lame", "-b:a", "192k"],
+            "wav": ["pcm_s16le"],
+            "aac": ["aac", "-b:a", "192k"],
+            "m4a": ["aac", "-b:a", "192k"],
+        }
+        
+        codec_args = codec_map.get(audio_format, ["libmp3lame", "-b:a", "192k"])
+        
+        cmd = [
+            ffmpeg_path,
+            "-y",  # 覆蓋輸出
+            "-i", video_path,
+            "-vn",  # 不要視訊
+            "-ac", "2",  # 雙聲道
+            "-ar", "44100",  # 取樣率
+            "-c:a", codec_args[0],
+        ]
+        
+        # 添加額外的編碼器參數
+        if len(codec_args) > 1:
+            cmd.extend(codec_args[1:])
+        
+        cmd.append(output_path)
+        
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+            if result.returncode == 0:
+                return True, output_path
+            
+            error_msg = result.stderr.strip() or "未知錯誤"
+            return False, f"ffmpeg 轉換失敗: {error_msg}"
+        except subprocess.TimeoutExpired:
+            return False, "轉換超時（超過10分鐘）"
+        except Exception as e:
+            return False, f"ffmpeg 執行失敗: {str(e)}"
+    
+    return False, "未知錯誤"
+
+
+def render_video_to_audio_tab():
+    """渲染影片轉音檔標籤頁"""
+    st.header("🎬 影片轉音檔")
+    st.markdown("""
+    此功能可從影片檔案中提取音訊軌道，輸出為 MP3、WAV 或 AAC 格式。
+    
+    **支援的影片格式：** MP4, AVI, MKV, MOV, WebM, FLV, WMV
+    """)
+    
+    # 檢查是否有 moviepy 或 ffmpeg
+    has_moviepy = False
+    has_ffmpeg = shutil.which("ffmpeg") is not None
+    
+    try:
+        import moviepy.editor
+        has_moviepy = True
+    except ImportError:
+        pass
+    
+    if not has_moviepy and not has_ffmpeg:
+        st.error("⚠️ 需要安裝 MoviePy 或系統 ffmpeg 才能使用此功能")
+        st.code("pip install moviepy", language="bash")
+        st.markdown("或安裝 ffmpeg：")
+        st.code("# macOS\nbrew install ffmpeg\n\n# Ubuntu/Debian\nsudo apt install ffmpeg", language="bash")
+        return
+    
+    # 顯示可用的轉換工具
+    tools_available = []
+    if has_moviepy:
+        tools_available.append("MoviePy ✅")
+    if has_ffmpeg:
+        tools_available.append("ffmpeg ✅")
+    st.info(f"可用工具：{', '.join(tools_available)}")
+    
+    # 上傳影片檔案
+    uploaded_video = st.file_uploader(
+        "上傳影片檔案",
+        type=SUPPORTED_VIDEO_FORMATS,
+        help="支援 MP4, AVI, MKV, MOV, WebM, FLV, WMV 格式"
+    )
+    
+    # 輸出格式選擇
+    col1, col2 = st.columns(2)
+    with col1:
+        output_format = st.selectbox(
+            "輸出音訊格式",
+            options=["mp3", "wav", "aac", "m4a"],
+            index=0,
+            help="選擇輸出的音訊格式"
+        )
+    
+    with col2:
+        st.markdown("**格式說明：**")
+        format_info = {
+            "mp3": "最通用的格式，檔案較小",
+            "wav": "無損格式，檔案較大",
+            "aac": "高品質壓縮格式",
+            "m4a": "Apple 相容的 AAC 格式"
+        }
+        st.caption(format_info.get(output_format, ""))
+    
+    # 轉換按鈕
+    if uploaded_video is not None:
+        st.markdown(f"**檔案名稱：** {uploaded_video.name}")
+        st.markdown(f"**檔案大小：** {uploaded_video.size / (1024*1024):.2f} MB")
+        
+        if st.button("🔄 開始轉換", type="primary", use_container_width=True):
+            with st.spinner("正在轉換中..."):
+                try:
+                    # 儲存上傳的影片到臨時檔案
+                    with tempfile.NamedTemporaryFile(delete=False, suffix=f".{uploaded_video.name.split('.')[-1]}") as tmp_video:
+                        tmp_video.write(uploaded_video.getvalue())
+                        tmp_video_path = tmp_video.name
+                    
+                    # 設定輸出路徑
+                    output_filename = os.path.splitext(uploaded_video.name)[0] + f".{output_format}"
+                    tmp_audio_path = os.path.join(tempfile.gettempdir(), output_filename)
+                    
+                    # 執行轉換
+                    progress_bar = st.progress(0, text="正在提取音訊...")
+                    success, result = extract_audio_from_video(tmp_video_path, tmp_audio_path, output_format)
+                    progress_bar.progress(100, text="轉換完成！")
+                    
+                    if success:
+                        st.success(f"✅ 轉換成功！")
+                        
+                        # 讀取轉換後的音訊檔案
+                        with open(result, "rb") as audio_file:
+                            audio_data = audio_file.read()
+                        
+                        # 顯示音訊檔案資訊
+                        audio_size = len(audio_data) / (1024*1024)
+                        st.markdown(f"**輸出檔案大小：** {audio_size:.2f} MB")
+                        
+                        # 提供下載按鈕
+                        st.download_button(
+                            label=f"⬇️ 下載 {output_filename}",
+                            data=audio_data,
+                            file_name=output_filename,
+                            mime=f"audio/{output_format}",
+                            use_container_width=True
+                        )
+                        
+                        # 提供音訊預覽
+                        st.audio(audio_data, format=f"audio/{output_format}")
+                        
+                        # 儲存到 session state 供後續步驟使用
+                        st.session_state["converted_audio_data"] = audio_data
+                        st.session_state["converted_audio_name"] = output_filename
+                        
+                        st.info("💡 提示：轉換後的音檔可直接用於「語音轉文字」功能")
+                        
+                    else:
+                        st.error(f"❌ 轉換失敗：{result}")
+                    
+                    # 清理臨時檔案
+                    try:
+                        os.unlink(tmp_video_path)
+                        if success and os.path.exists(tmp_audio_path):
+                            os.unlink(tmp_audio_path)
+                    except:
+                        pass
+                        
+                except Exception as e:
+                    st.error(f"❌ 處理過程發生錯誤：{str(e)}")
+                    logger.error(f"影片轉音檔失敗: {str(e)}")
+
 
 def encode_image_to_base64(image_path: str) -> str:
     """
@@ -1141,18 +1358,23 @@ def main():
 
     # 創建主要的功能標籤頁，添加步驟編號
     tabs_titles = [
-        "📝 Step 1: 文件與圖像處理", 
-        "🎙️ Step 2: 語音轉文字", 
-        "✨ Step 3: 文字優化"
+        "🎬 Step 1: 影片轉音檔",
+        "📝 Step 2: 文件與圖像處理", 
+        "🎙️ Step 3: 語音轉文字", 
+        "✨ Step 4: 文字優化"
     ]
     main_tabs = st.tabs(tabs_titles)
     
-    # 文件轉換與關鍵詞標籤頁 (Step 1)
+    # 影片轉音檔標籤頁 (Step 1)
     with main_tabs[0]:
+        render_video_to_audio_tab()
+    
+    # 文件轉換與關鍵詞標籤頁 (Step 2)
+    with main_tabs[1]:
         render_markitdown_tab()
     
-    # 語音轉文字標籤頁 (Step 2)
-    with main_tabs[1]:
+    # 語音轉文字標籤頁 (Step 3)
+    with main_tabs[2]:
         with st.sidebar:
             st.header("設定")
             
@@ -1729,13 +1951,13 @@ def main():
                 st.error(f"處理失敗：{str(e)}")
                 logger.error(f"處理失敗：{str(e)}")
         
-        # 優化標籤頁 (Step 3)
-        with main_tabs[2]:
-            st.header("Step 3: 文字優化")
+        # 優化標籤頁 (Step 4)
+        with main_tabs[3]:
+            st.header("Step 4: 文字優化")
         
             # 如果沒有待優化的文字，顯示提示
             if not st.session_state.transcribed_text:
-                st.info("請先在 Step 1 轉換文件或 Step 2 轉錄音訊，然後再執行優化")
+                st.info("請先在 Step 2 轉換文件或 Step 3 轉錄音訊，然後再執行優化")
                 return
 
             # 顯示優化結果（如果有的話）
