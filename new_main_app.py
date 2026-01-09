@@ -63,8 +63,32 @@ MODEL_CONFIG = {
         "cached_input": 0.55,   # $0.55 per 1M tokens
         "output": 4.40          # $4.40 per 1M tokens
     },
-    "gemini-2.5-pro-exp-03-25": {
-        "display_name": "Gemini 2.5 Pro Experimental",
+    "gemini-3-pro-preview": {
+        "display_name": "Gemini 3 Pro Preview",
+        "input": 0.00,          # 價格待定
+        "cached_input": 0.00,   # 價格待定
+        "output": 0.00          # 價格待定
+    },
+    "gemini-3-flash-preview": {
+        "display_name": "Gemini 3 Flash Preview",
+        "input": 0.00,          # 價格待定
+        "cached_input": 0.00,   # 價格待定
+        "output": 0.00          # 價格待定
+    },
+    "gemini-2.5-pro": {
+        "display_name": "Gemini 2.5 Pro",
+        "input": 0.00,          # 價格待定
+        "cached_input": 0.00,   # 價格待定
+        "output": 0.00          # 價格待定
+    },
+    "gemini-2.5-flash": {
+        "display_name": "Gemini 2.5 Flash",
+        "input": 0.00,          # 價格待定
+        "cached_input": 0.00,   # 價格待定
+        "output": 0.00          # 價格待定
+    },
+    "gemini-2.0-flash": {
+        "display_name": "Gemini 2.0 Flash",
         "input": 0.00,          # 價格待定
         "cached_input": 0.00,   # 價格待定
         "output": 0.00          # 價格待定
@@ -191,7 +215,7 @@ def refine_transcript_gemini(text, api_key, temperature=0.5, context=""):
     """
     try:
         genai.configure(api_key=api_key)
-        model = genai.GenerativeModel('gemini-2.5-pro-exp-03-25')
+        model = genai.GenerativeModel('gemini-2.5-pro')
         
         # 準備提示詞
         prompt = f"""

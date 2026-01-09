@@ -109,7 +109,7 @@ class BatchProcessor:
                 if summary_prompt:
                     print(f"  Generating summary...")
                     summary_text = f"{summary_prompt}\n\nTranscription:\n{result['transcription']}"
-                    result['summary'] = call_gemini_api(summary_text, model="gemini-2.0-flash-exp")
+                    result['summary'] = call_gemini_api(summary_text, model="gemini-2.0-flash")
                 
                 result['status'] = 'completed'
             else:

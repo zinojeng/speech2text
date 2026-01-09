@@ -360,7 +360,7 @@ class BatchAudioProcessor:
             logger.info("開始使用 Gemini 2.5 Pro 進行摘要處理")
 
             # 建立模型
-            model = genai.GenerativeModel('gemini-2.5-pro-preview-06-05')
+            model = genai.GenerativeModel('gemini-2.5-pro')
 
             # 構建提示詞
             user_prompt = f"""請根據以下轉錄內容進行摘要處理：

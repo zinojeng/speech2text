@@ -74,14 +74,32 @@ MODEL_CONFIG = {
         "cached_input": 0.55,   # $0.55 per 1M tokens
         "output": 4.40          # $4.40 per 1M tokens
     },
-    "gemini-2.5-pro-preview-05-06": {
-        "display_name": "Gemini 2.5 Pro Experimental",
+    "gemini-3-pro-preview": {
+        "display_name": "Gemini 3 Pro Preview",
         "input": 0.00,          # 價格待定
         "cached_input": 0.00,   # 價格待定
         "output": 0.00          # 價格待定
     },
-    "gemini-2.5-flash-preview-04-17": {
-        "display_name": "Gemini 2.5 Flash Preview",
+    "gemini-3-flash-preview": {
+        "display_name": "Gemini 3 Flash Preview",
+        "input": 0.00,          # 價格待定
+        "cached_input": 0.00,   # 價格待定
+        "output": 0.00          # 價格待定
+    },
+    "gemini-2.5-pro": {
+        "display_name": "Gemini 2.5 Pro",
+        "input": 0.00,          # 價格待定
+        "cached_input": 0.00,   # 價格待定
+        "output": 0.00          # 價格待定
+    },
+    "gemini-2.5-flash": {
+        "display_name": "Gemini 2.5 Flash",
+        "input": 0.00,          # 價格待定
+        "cached_input": 0.00,   # 價格待定
+        "output": 0.00          # 價格待定
+    },
+    "gemini-2.0-flash": {
+        "display_name": "Gemini 2.0 Flash",
         "input": 0.00,          # 價格待定
         "cached_input": 0.00,   # 價格待定
         "output": 0.00          # 價格待定
@@ -332,7 +350,7 @@ def refine_transcript_gemini(text, api_key, temperature=0.5, context=""):
     try:
         genai.configure(api_key=api_key)
         # 使用 session_state 中選擇的模型，如果未設置則使用預設值
-        model_name = st.session_state.get("gemini_model", "gemini-2.5-pro-preview-05-06")
+        model_name = st.session_state.get("gemini_model", "gemini-2.5-pro")
         model = genai.GenerativeModel(model_name)
         
         # 準備提示詞
@@ -1304,11 +1322,14 @@ def main():
                     gemini_model = st.radio(
                         "選擇 Gemini 模型",
                         options=[
-                            "gemini-2.5-pro-preview-05-06", 
-                            "gemini-2.5-flash-preview-04-17"
+                            "gemini-3-pro-preview",
+                            "gemini-3-flash-preview",
+                            "gemini-2.5-pro", 
+                            "gemini-2.5-flash",
+                            "gemini-2.0-flash"
                         ],
                         index=0,
-                        help="Pro 版本功能更強大，Flash 版本速度更快"
+                        help="Gemini 3 系列最強大，2.5 系列穩定，Flash 版本速度更快"
                     )
                     st.session_state["gemini_model"] = gemini_model
                     

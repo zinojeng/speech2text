@@ -125,7 +125,7 @@ def process_single_file(file_path, model="gpt-4o-mini-transcribe", summary_promp
                 # Generate summary if prompt provided
                 if summary_prompt and has_gemini:
                     summary_text = f"{summary_prompt}\n\nTranscription:\n{result['transcription']}"
-                    result['summary'] = call_gemini_api(summary_text, model="gemini-2.0-flash-exp")
+                    result['summary'] = call_gemini_api(summary_text, model="gemini-2.0-flash")
                 
                 result['status'] = 'completed'
                 break  # Success, exit retry loop

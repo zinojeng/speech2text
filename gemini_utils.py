@@ -10,13 +10,13 @@ try:
 except ImportError:
     genai = None
 
-def call_gemini_api(prompt: str, model: str = "gemini-2.0-flash-exp", api_key: Optional[str] = None) -> Optional[str]:
+def call_gemini_api(prompt: str, model: str = "gemini-2.0-flash", api_key: Optional[str] = None) -> Optional[str]:
     """
     Call Gemini API for text generation
     
     Args:
         prompt: The prompt text
-        model: Model name (default: gemini-2.0-flash-exp)
+        model: Model name (default: gemini-2.0-flash)
         api_key: API key (if not provided, uses environment variable)
     
     Returns:
