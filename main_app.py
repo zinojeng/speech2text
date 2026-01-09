@@ -263,6 +263,9 @@ def render_video_to_audio_tab():
     **支援的影片格式：** MP4, AVI, MKV, MOV, WebM, FLV, WMV
     """)
     
+    # 提示：無縫流程
+    st.info("💡 **無縫流程**：處理後的音檔可一鍵轉換至「Step 3: 語音轉文字」，無需下載後再上傳！")
+    
     # 檢查是否有 moviepy 或 ffmpeg
     has_moviepy = False
     has_ffmpeg = shutil.which("ffmpeg") is not None
@@ -363,8 +366,11 @@ def render_video_to_audio_tab():
                         # 儲存到 session state 供後續步驟使用
                         st.session_state["converted_audio_data"] = audio_data
                         st.session_state["converted_audio_name"] = output_filename
+                        st.session_state["converted_audio_format"] = output_format
                         
-                        st.info("💡 提示：轉換後的音檔可直接用於「語音轉文字」功能")
+                        # 成功提示與一鍵跳轉
+                        st.success("🎉 音檔已準備就緒！可直接在「Step 3: 語音轉文字」中使用，無需重新上傳。")
+                        st.markdown("👉 請切換到 **Step 3: 語音轉文字** 標籤頁，系統會自動載入此音檔。")
                         
                     else:
                         st.error(f"❌ 轉換失敗：{result}")
@@ -1609,13 +1615,46 @@ def main():
             """)
 
         # 語音轉文字主要內容
-        st.header("Step 2: 語音轉文字")
+        st.header("Step 3: 語音轉文字")
         
-        # 上傳檔案
-        uploaded_file = st.file_uploader(
-            "上傳音訊檔案",
-            type=["mp3", "wav", "ogg", "m4a"]
+        # 檢查是否有來自 Step 1 的轉換音檔
+        has_converted_audio = (
+            "converted_audio_data" in st.session_state and 
+            st.session_state.get("converted_audio_data") is not None
         )
+        
+        if has_converted_audio:
+            converted_name = st.session_state.get("converted_audio_name", "audio.mp3")
+            st.success(f"🎉 檢測到來自 Step 1 的音檔：**{converted_name}**")
+            
+            # 選擇音檔來源
+            audio_source = st.radio(
+                "選擇音檔來源",
+                options=["使用 Step 1 轉換的音檔", "上傳新的音檔"],
+                index=0,
+                horizontal=True
+            )
+            
+            if audio_source == "使用 Step 1 轉換的音檔":
+                # 顯示預覽
+                st.audio(st.session_state["converted_audio_data"], 
+                        format=f"audio/{st.session_state.get('converted_audio_format', 'mp3')}")
+                uploaded_file = None  # 使用轉換的音檔，不需要上傳
+                use_converted = True
+            else:
+                # 上傳檔案
+                uploaded_file = st.file_uploader(
+                    "上傳音訊檔案",
+                    type=["mp3", "wav", "ogg", "m4a"]
+                )
+                use_converted = False
+        else:
+            use_converted = False
+            # 上傳檔案
+            uploaded_file = st.file_uploader(
+                "上傳音訊檔案",
+                type=["mp3", "wav", "ogg", "m4a"]
+            )
         
         # 只顯示轉錄按鈕
         transcribe_button = st.button("🎙️ 轉錄音訊", use_container_width=True)
@@ -1686,8 +1725,10 @@ def main():
         else:
             optimize_button = False
         
-        # 處理轉錄
-        if uploaded_file and transcribe_button:
+        # 處理轉錄 - 支援上傳檔案或來自 Step 1 的轉換音檔
+        should_transcribe = transcribe_button and (uploaded_file or (has_converted_audio and use_converted))
+        
+        if should_transcribe:
             # 從session state獲取API金鑰
             openai_api_key = st.session_state.get("openai_api_key", "")
             elevenlabs_api_key = st.session_state.get("elevenlabs_api_key", "")
@@ -1709,14 +1750,30 @@ def main():
                     if transcription_service == "OpenAI 2025 New":
                         openai_client = OpenAI(api_key=openai_api_key)
                     
-                    # 處理上傳的檔案
-                    suffix = os.path.splitext(uploaded_file.name)[1]
-                    with tempfile.NamedTemporaryFile(
-                        delete=False,
-                        suffix=suffix
-                    ) as temp_file:
-                        temp_file.write(uploaded_file.getvalue())
-                        temp_path = temp_file.name
+                    # 處理音檔來源
+                    if has_converted_audio and use_converted:
+                        # 使用來自 Step 1 的轉換音檔
+                        audio_data = st.session_state["converted_audio_data"]
+                        audio_name = st.session_state.get("converted_audio_name", "audio.mp3")
+                        suffix = os.path.splitext(audio_name)[1]
+                        
+                        with tempfile.NamedTemporaryFile(
+                            delete=False,
+                            suffix=suffix
+                        ) as temp_file:
+                            temp_file.write(audio_data)
+                            temp_path = temp_file.name
+                        
+                        st.info(f"📂 正在處理來自 Step 1 的音檔：{audio_name}")
+                    else:
+                        # 處理上傳的檔案
+                        suffix = os.path.splitext(uploaded_file.name)[1]
+                        with tempfile.NamedTemporaryFile(
+                            delete=False,
+                            suffix=suffix
+                        ) as temp_file:
+                            temp_file.write(uploaded_file.getvalue())
+                            temp_path = temp_file.name
                     
                     try:
                         # 檢查音訊長度
