@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Dict, Any, Optional, List
 from dataclasses import asdict
 
-from batch_audio_models import (
+from ..core.models import (
     ProcessingConfig, APIConfig, TranscriptionModel, 
     OutputFormat, SummaryModel, validate_system_requirements
 )

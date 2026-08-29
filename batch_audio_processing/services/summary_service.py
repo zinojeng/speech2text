@@ -363,20 +363,20 @@ class SummaryService:
         
         for eng, chi in replacements.items():
             # 只在中文語境中替換
-            content = re.sub(f'([\\u4e00-\\u9fff]){re.escape(eng)}', f'\\1{chi}', content)
-            content = re.sub(f'{re.escape(eng)}([\\u4e00-\\u9fff])', f'{chi}\\1', content)
+            content = re.sub(f'([\u4e00-\u9fff]){re.escape(eng)}', f'\\1{chi}', content)
+            content = re.sub(f'{re.escape(eng)}([\u4e00-\u9fff])', f'{chi}\\1', content)
         
         return content
     
     def _format_mixed_language(self, content: str) -> str:
         """格式化中英文混排"""
         # 在中英文之間添加適當的空格
-        content = re.sub(r'([\\u4e00-\\u9fff])([a-zA-Z])', r'\\1 \\2', content)
-        content = re.sub(r'([a-zA-Z])([\\u4e00-\\u9fff])', r'\\1 \\2', content)
+        content = re.sub(r'([\u4e00-\u9fff])([a-zA-Z])', r'\1 \2', content)
+        content = re.sub(r'([a-zA-Z])([\u4e00-\u9fff])', r'\1 \2', content)
         
         # 在中文和數字之間添加空格
-        content = re.sub(r'([\\u4e00-\\u9fff])([0-9])', r'\\1 \\2', content)
-        content = re.sub(r'([0-9])([\\u4e00-\\u9fff])', r'\\1 \\2', content)
+        content = re.sub(r'([\u4e00-\u9fff])([0-9])', r'\1 \2', content)
+        content = re.sub(r'([0-9])([\u4e00-\u9fff])', r'\1 \2', content)
         
         return content
     
@@ -390,6 +390,53 @@ class SummaryService:
         content = re.sub(r'(#+\s+.*?)\n([^#\n])', r'\\1\n\n\\2', content)
         
         return content.strip()
+    
+    def generate_summary_with_docx(self, request: SummaryRequest, output_docx_path: Optional[str] = None) -> SummaryResult:
+        """
+        生成智能摘要並同時輸出 DOCX 格式
+        
+        Args:
+            request: 摘要請求
+            output_docx_path: DOCX 輸出路徑，如果為 None 則自動生成
+            
+        Returns:
+            摘要結果，包含 DOCX 路徑資訊
+        """
+        # 先生成 Markdown 格式的摘要
+        result = self.generate_summary(request)
+        
+        if not result.success:
+            return result
+        
+        try:
+            # 生成 DOCX 檔案
+            if not output_docx_path:
+                # 自動生成 DOCX 檔案名稱
+                from datetime import datetime
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                safe_filename = re.sub(r'[^\w\s-]', '', request.file_name).strip()
+                safe_filename = re.sub(r'[-\s]+', '-', safe_filename)
+                output_docx_path = f"{safe_filename}_詳細筆記_{timestamp}.docx"
+            
+            # 使用現有的轉換器
+            from convert_summary_to_docx import MarkdownToDocxConverter
+            
+            converter = MarkdownToDocxConverter()
+            converter.convert_markdown_to_docx(
+                markdown_content=result.content,
+                title=f"{request.file_name} - 詳細會議筆記"
+            )
+            converter.save_document(output_docx_path)
+            
+            logger.info(f"DOCX 檔案生成成功: {output_docx_path}")
+            # 在結果中添加 DOCX 路徑資訊
+            result.docx_path = output_docx_path
+                
+        except Exception as e:
+            logger.error(f"DOCX 生成過程中發生錯誤: {e}")
+            # 不影響主要的摘要結果
+        
+        return result
     
     def generate_summary(self, request: SummaryRequest) -> SummaryResult:
         """
@@ -528,7 +575,7 @@ class SummaryService:
     
     def _build_prompt(self, request: SummaryRequest) -> str:
         """
-        構建 ADA 2025 會議專用系統提示詞
+        構建 ADA 2025 會議專用系統提示詞 - 增強版詳細筆記
         
         Args:
             request: 摘要請求
@@ -536,42 +583,79 @@ class SummaryService:
         Returns:
             完整的提示詞
         """
-        # ADA 2025 會議專用系統提示詞
-        system_prompt = """你是一個專業的醫學會議摘要助手，專門處理 ADA 2025（美國糖尿病學會年會）的會議內容。
+        # ADA 2025 會議專用系統提示詞 - 超強化版內容整理
+        system_prompt = """你是一個專業的醫學會議內容整理專家，專門處理 ADA 2025（美國糖尿病學會年會）的會議內容。
 
-請根據以下轉錄內容生成專業的中文摘要，要求：
+🚨 **重要說明：這不是摘要工作，而是內容整理工作** 🚨
 
-1. **結構化摘要**：
-   - 使用清晰的標題和子標題
-   - 採用 Markdown 格式
-   - 保持邏輯層次分明
+你的任務是將演講者的原始內容進行**完整保留、修飾潤稿、階層化重點標記**的專業整理。
 
-2. **內容要求**：
-   - 重點突出糖尿病相關的臨床發現
-   - 強調新藥物、新療法或新指引
-   - 包含重要的統計數據和研究結果
-   - 保留關鍵的醫學術語（中英文對照）
+## 核心原則：
 
-3. **格式要求**：
-   - 使用 **粗體** 標記重要概念
-   - 使用 _斜體_ 標記藥物名稱
-   - 使用項目符號列出要點
-   - 適當使用表格整理數據
+### 1. **完整內容保留**（不是摘要）：
+   - **100% 保留演講者的所有重要內容**，絕不省略任何細節
+   - **完整保持演講者的原始觀點**和表達邏輯
+   - **逐字逐句地整理**，而非概括或簡化
+   - **保留所有數據、統計資料、研究結果**的完整性
+   - **維持演講者的推理過程**和論證結構
 
-4. **專業性**：
-   - 保持醫學專業用語的準確性
-   - 確保內容的科學性和客觀性
-   - 避免過度簡化複雜的醫學概念
+### 2. **修飾潤稿**（提升可讀性）：
+   - **改善語句流暢度**，使表達更清晰易懂
+   - **修正語法錯誤**和表達不清的地方
+   - **統一專業術語**的使用，確保一致性
+   - **保持演講者的專業語調**和學術風格
+   - **優化段落結構**，提升整體可讀性
+
+### 3. **階層化重點標記**（格式強化）：
+   - 使用 **粗體** 標記：重要概念、關鍵發現、核心結論、新指引
+   - 使用 _斜體_ 標記：藥物名稱、研究名稱、技術術語、專有名詞
+   - 使用 ~~刪除線~~ 標記：已被推翻或修正的觀點
+   - 使用 `代碼格式` 標記：具體數值、劑量、統計值、p值、百分比
+   - 使用 **_粗斜體_** 標記：最重要的核心概念
+   - 使用項目符號和編號列表組織要點
+   - 使用引用格式 (>) 標記重要引言、定義或關鍵建議
+
+### 4. **專業結構化組織**：
+   - 使用清晰的 Markdown 多層次標題（##, ###, ####, #####）
+   - 按照演講邏輯順序組織內容
+   - 每個主題都要有**完整詳細的內容展開**
+   - 包含演講者的背景介紹和資歷（如果提及）
+   - 保留問答環節的完整內容（如果有）
+   - 創建清晰的章節分隔和過渡
+
+### 5. **醫學專業性強化**：
+   - 保持醫學術語的**絕對準確性**（提供中英文對照）
+   - **完整記錄所有臨床數據**和研究結果
+   - **保留所有統計學意義**和 p 值
+   - **詳細記錄研究方法**和樣本大小
+   - **包含完整的安全性數據**和副作用資訊
+   - **記錄所有建議等級**（A、B、C級證據）
+
+### 6. **數據完整呈現**：
+   - 使用表格整理複雜數據結構
+   - **保留所有數字、百分比、統計值**
+   - **標記統計顯著性**和置信度
+   - **包含信賴區間和風險比**
+   - **記錄研究的樣本數和追蹤時間**
+   - **保留所有對比數據**和基線值
+
+### 7. **格式優化要求**：
+   - 大量使用格式標記來突出重點
+   - 創建視覺層次清晰的文檔結構
+   - 使用適當的空行和分隔來提升可讀性
+   - 確保專業文檔的視覺美觀性
 
 """
         
         # 如果有議程內容，加入議程整合指示
         if request.agenda_content:
             system_prompt += """
-5. **議程整合**：
-   - 參考提供的議程內容來組織摘要結構
-   - 確保摘要涵蓋議程中的主要議題
-   - 將轉錄內容與議程項目對應
+### 8. **議程整合**：
+   - **嚴格按照提供的議程內容來組織筆記結構**
+   - 為每個議程項目創建對應的詳細章節
+   - 確保涵蓋議程中的所有主要議題
+   - 將轉錄內容精確對應到相應的議程項目
+   - 如果某個議程項目沒有對應內容，請標註「此項目未在錄音中涵蓋」
 """
         
         # 構建完整提示詞
@@ -579,19 +663,47 @@ class SummaryService:
         
         # 添加議程內容（如果有）
         if request.agenda_content:
-            full_prompt += f"**會議議程：**\n{request.agenda_content}\n\n"
+            full_prompt += f"## 會議議程：\n{request.agenda_content}\n\n"
         
         # 添加轉錄內容
-        full_prompt += f"**會議轉錄內容：**\n{request.transcript}\n\n"
+        full_prompt += f"## 會議轉錄內容：\n{request.transcript}\n\n"
         
         # 添加生成指示
-        full_prompt += """請基於以上內容生成專業的中文摘要。摘要應該：
-- 完整涵蓋重要內容
-- 結構清晰易讀
-- 突出臨床意義
-- 保持專業水準
+        full_prompt += """## 整理指示：
 
-開始生成摘要："""
+請基於以上內容生成**詳細完整的會議筆記**（不是摘要）。筆記必須：
+
+### 📋 **內容要求**：
+✅ **完整性**：儘可能保留演講者的所有內容，包括細節、例子、數據
+✅ **邏輯性**：按照演講者的邏輯順序組織內容
+✅ **準確性**：保持醫學術語準確，提供中英文對照
+✅ **詳細度**：這是筆記整理，要比一般摘要更詳細 3-5 倍
+
+### 🎨 **格式要求**：
+✅ **標題層次**：使用 #, ##, ###, #### 創建清晰的標題結構
+✅ **重點標記**：大量使用 **粗體** 標記重要概念和結論
+✅ **術語標記**：使用 _斜體_ 標記藥物名稱、研究名稱、專業術語
+✅ **數值標記**：使用 `代碼格式` 標記所有數字、百分比、統計值
+✅ **引用標記**：使用 > 標記重要定義、關鍵建議或引言
+✅ **列表組織**：使用項目符號和編號列表組織要點
+
+### 📊 **結構要求**：
+✅ **清晰分段**：每個主題都要有完整的內容展開
+✅ **邏輯過渡**：在段落間使用適當的過渡和連接
+✅ **視覺分隔**：使用分隔線 (---) 區分不同主題
+✅ **專業排版**：確保文檔具有專業的視覺呈現
+
+### ❌ **避免事項**：
+❌ 不要省略重要細節
+❌ 不要過度簡化複雜概念  
+❌ 不要遺漏數據和統計資料
+❌ 不要改變演講者的核心觀點
+❌ 不要使用過於簡潔的表達
+
+### 🎯 **輸出目標**：
+生成一份**專業、詳細、格式清晰**的醫學會議筆記，適合醫療專業人員學習和參考。
+
+現在開始整理詳細的會議筆記："""
         
         return full_prompt
     

@@ -29,8 +29,11 @@ except ImportError:
     logger = logging.getLogger(__name__)
     logger.warning("python-docx 未安裝，Word 報告功能將不可用")
 
-from batch_audio_models import FileInfo, TranscriptionResult, SummaryResult
-from batch_processing_orchestrator import FileProcessingResult, BatchProcessingResult
+from batch_audio_processing.core.models import FileInfo, TranscriptionResult, SummaryResult
+from batch_audio_processing.services.processing_orchestrator import (
+    FileProcessingResult,
+    BatchProcessingResult,
+)
 
 # 設定日誌
 logger = logging.getLogger(__name__)
@@ -837,8 +840,12 @@ class ReportGenerator:
 if __name__ == "__main__":
     """測試報告生成器功能"""
     import sys
-    from batch_audio_models import FileInfo, TranscriptionResult, SummaryResult
-    from batch_processing_orchestrator import FileProcessingResult, BatchProcessingResult, ProcessingStatus
+    from batch_audio_processing.core.models import FileInfo, TranscriptionResult, SummaryResult
+    from batch_audio_processing.services.processing_orchestrator import (
+        FileProcessingResult,
+        BatchProcessingResult,
+        ProcessingStatus,
+    )
     
     # 設定日誌
     logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')

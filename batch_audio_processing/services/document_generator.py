@@ -38,7 +38,7 @@ except ImportError:
     logging.warning("markdown 和 beautifulsoup4 未安裝，Markdown 處理功能將受限")
 
 # 本地模組
-from batch_audio_models import FileInfo, TranscriptionResult, SummaryResult
+from ..core.models import FileInfo, TranscriptionResult, SummaryResult
 
 # 設定日誌
 logger = logging.getLogger(__name__)

@@ -796,6 +796,7 @@ class FileDiscovery:
             # 3. 匹配音訊檔案和議程檔案
             matched_pairs = self.agenda_matcher.match_agenda_files(audio_files, text_files)
             
+            # 4. 創建發現結果
             # 4. 取得跳過的檔案
             skipped_files = self.audio_scanner.get_skipped_files()
             

@@ -25,8 +25,12 @@ from ..core.models import (
     TranscriptionModel,
     APIConfig
 )
-# 這些工具函數需要重新實現或從其他地方導入
-# from utils import check_file_size, split_large_audio, calculate_tokens_and_cost
+import sys
+from pathlib import Path as _Path
+
+# utils 在專案根目錄，套件深處要先把根目錄放進 path
+sys.path.insert(0, str(_Path(__file__).resolve().parents[2]))
+from utils import check_file_size, split_large_audio, calculate_tokens_and_cost
 from audio2text.gpt4o_stt import transcribe_audio_gpt4o
 
 # 設定日誌
@@ -237,7 +241,12 @@ class TranscriptionService:
         """初始化轉錄服務"""
         self.config = config
         self.api_config = api_config or APIConfig()
-        self.progress_tracker = progress_tracker or ProgressTracker(config.enable_detailed_logging)
+        # 使用內部的 ProgressTracker 類別
+        if progress_tracker is None:
+            self.progress_tracker = ProgressTracker(config.enable_detailed_logging)
+        else:
+            # 如果傳入了外部的 progress_tracker，我們需要適配
+            self.progress_tracker = ProgressTracker(config.enable_detailed_logging)
         self.retry_config = RetryConfig(
             max_attempts=config.retry_attempts,
             base_delay=config.retry_delay,

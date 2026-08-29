@@ -27,16 +27,16 @@ from concurrent.futures import ThreadPoolExecutor, Future, as_completed
 import queue
 
 # 本地模組
-from batch_audio_models import (
+from ..core.models import (
     ProcessingConfig, 
     FileInfo, 
     TranscriptionResult, 
     SummaryResult,
     APIConfig
 )
-from batch_transcription_service import TranscriptionService, ProgressTracker
-from batch_summary_service import SummaryService, SummaryRequest
-from batch_document_generator import DocumentGenerator, DocumentResult
+from .transcription_service import TranscriptionService, ProgressTracker
+from .summary_service import SummaryService, SummaryRequest
+from .document_generator import DocumentGenerator, DocumentResult
 
 # 設定日誌
 logger = logging.getLogger(__name__)

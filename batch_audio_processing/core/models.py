@@ -511,7 +511,6 @@ class DiscoveryResult:
             'total_text_files': len(self.text_files),
             'matched_pairs': len(self.matched_pairs),
             'unmatched_audio': len(self.unmatched_audio),
-            'skipped_files': len(self.skipped_files),
             'total_size_mb': self.total_size_mb
         }
     
