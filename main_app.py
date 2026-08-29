@@ -765,6 +765,537 @@ def process_markdown_extraction(text, api_key, model, keyword_count):
         logger.error(f"提取關鍵詞失敗: {str(e)}")
         return []
 
+def render_content_input_tab():
+    """Step 2 的「內容輸入」分頁：檔案上傳或直接輸入，轉成 Markdown。
+
+    結果寫進 session_state["markdown_text"]，不回傳。
+    """
+    st.subheader("文件及圖片上傳或直接輸入")
+
+    # 選擇輸入類型
+    input_type = st.radio(
+        "選擇輸入方式",
+        ["檔案上傳", "直接輸入"],
+        horizontal=True
+    )
+
+    if input_type == "檔案上傳":
+        # 整合文件和圖片上傳為單一上傳區域
+        st.markdown("""
+        支持以下檔案類型：
+        - 文件：PDF, DOCX, DOC, PPTX, PPT, XLSX, XLS, CSV, TXT, RTF, HTML, 
+          HTM, MD, MARKDOWN
+        - 圖片：JPG, JPEG, PNG
+
+        檔案大小限制：每個檔案 200MB
+        """)
+
+        # 合併所有支持的檔案類型
+        all_supported_files = SUPPORTED_FILE_TYPES + ["jpg", "jpeg", "png"]
+
+        # 單一上傳界面
+        uploaded_files = st.file_uploader(
+            "拖放檔案到此處上傳",
+            type=all_supported_files,
+            accept_multiple_files=True,
+            help="支持文件和圖片同時上傳，系統會自動識別檔案類型"
+        )
+
+        # 檢查是否有 OpenAI API 金鑰
+        openai_api_key = st.session_state.get("openai_api_key", "")
+
+        # 添加 Vision API 選項
+        use_vision_api = st.checkbox(
+            "🔍 啟用進階 Vision API 分析 (適用於複雜 PPTX 圖片投影片)",
+            value=False,
+            help="使用進階 Vision API 將整個 PPTX 轉為圖片進行深度分析。即使不勾選，MarkItDown 也會自動處理文件中的圖片內容。需要 OpenAI API 金鑰。"
+        )
+
+        # 如果啟用了 Vision API 但沒有 API 金鑰，顯示警告
+        if use_vision_api and not openai_api_key:
+            st.warning("⚠️ 已啟用 Vision API，但未提供 OpenAI API 金鑰。請在側邊欄填入 API 金鑰以使用此功能。")
+
+        # 處理說明
+        if uploaded_files:
+            # 分類上傳的檔案
+            doc_files = []
+            image_files = []
+
+            for file in uploaded_files:
+                file_ext = file.name.split('.')[-1].lower()
+                if file_ext in ["jpg", "jpeg", "png"]:
+                    image_files.append(file)
+                else:
+                    doc_files.append(file)
+
+            # 顯示檔案資訊
+            if doc_files and image_files:
+                st.info(
+                    f"已上傳 {len(doc_files)} 個文件和 {len(image_files)} 張圖片"
+                )
+                process_btn_label = "🔄 處理文件和分析圖片"
+            elif doc_files:
+                st.info(f"已上傳 {len(doc_files)} 個文件")
+                process_btn_label = "🔄 轉換文件為 Markdown"
+            elif image_files:
+                st.info(f"已上傳 {len(image_files)} 張圖片")
+                process_btn_label = "🔄 分析圖片"
+            else:
+                st.warning("請上傳文件或圖片進行處理")
+                return
+
+            # 整合處理按鈕
+            if not openai_api_key:
+                st.warning("請在側邊欄提供 OpenAI API 金鑰以進行分析")
+            else:
+                process_btn = st.button(
+                    process_btn_label,
+                    use_container_width=True
+                )
+
+                if process_btn:
+                    # 處理流程
+                    with st.spinner("正在處理..."):
+                        temp_markdown = ""
+
+                        # 處理文件（如果有）
+                        if doc_files:
+                            # 處理第一個文件（目前只支援處理一個文件）
+                            uploaded_file = doc_files[0]
+                            success, temp_path = save_uploaded_file(
+                                uploaded_file
+                            )
+
+                            if success:
+                                # 轉換檔案
+                                st.info("正在轉換文件...")
+                                success, md_text, info = (
+                                    convert_file_to_markdown(
+                                        input_path=temp_path,
+                                        use_llm=use_vision_api,
+                                        api_key=openai_api_key,
+                                        model=OPENAI_VISION  # 視覺分析
+                                    )
+                                )
+
+                                # 如果轉換失敗且是 magika 相關錯誤，提供修復建議
+                                if not success and "magika" in str(info.get("error", "")).lower():
+                                    st.error("檔案轉換失敗：magika 套件配置問題")
+                                    st.markdown("""
+                                    **解決方案：**
+                                    1. 在終端機執行以下命令修復 magika 套件：
+                                    ```bash
+                                    python fix_magika.py
+                                    ```
+
+                                    2. 或者手動執行：
+                                    ```bash
+                                    pip uninstall magika -y
+                                    pip install magika --no-cache-dir
+                                    ```
+
+                                    3. 重新啟動應用程式
+                                    """)
+                                    # 跳過後續處理，直接返回
+                                    return
+
+                                # 清理臨時檔案
+                                try:
+                                    os.remove(temp_path)
+                                except Exception as e:
+                                    logger.error(
+                                        f"清理臨時檔案失敗: {str(e)}"
+                                    )
+                                    pass
+
+                                if success:
+                                    temp_markdown = md_text
+                                    st.success("文件轉換成功！")
+                                else:
+                                    # 顯示錯誤資訊
+                                    st.error(
+                                        f"轉換失敗: {info.get('error', '未知錯誤')}"
+                                    )
+                            else:
+                                st.error(
+                                    f"處理上傳檔案時發生錯誤: {temp_path}"
+                                )
+
+                        # 處理圖片（如果有）
+                        if image_files:
+                            # 如果有文件轉換內容，添加分隔線和圖片分析標題
+                            if temp_markdown:
+                                temp_markdown += "\n\n## 圖片分析\n\n"
+                            else:
+                                temp_markdown = "# 圖片分析結果\n\n"
+
+                            # 保存和分析圖片
+                            analyzed_count = 0
+                            progress_bar = st.progress(0)
+                            total_images = len(image_files)
+
+                            for i, img_file in enumerate(image_files):
+                                # 保存上傳的檔案
+                                success, temp_path = save_uploaded_file(
+                                    img_file
+                                )
+
+                                if success:
+                                    # 分析圖片
+                                    with st.spinner(
+                                        f"分析圖片 {i+1}/{total_images}..."
+                                    ):
+                                        result = analyze_image(
+                                            temp_path, 
+                                            openai_api_key, 
+                                            OPENAI_REFINE_CHEAP
+                                        )
+
+                                    if result["success"]:
+                                        # 儲存分析結果
+                                        img_analysis = {
+                                            "path": temp_path,
+                                            "description": (
+                                                result["description"]
+                                            ),
+                                            "tokens": result["tokens"]
+                                        }
+                                        st.session_state.analyzed_images[
+                                            img_file.name
+                                        ] = img_analysis
+
+                                        # 顯示圖片和分析結果
+                                        st.image(
+                                            temp_path, 
+                                            caption=img_file.name
+                                        )
+                                        st.markdown("### 分析結果")
+                                        st.markdown(result["description"])
+                                        st.markdown("---")
+
+                                        # 添加到臨時 Markdown
+                                        md_title = f"### {img_file.name}\n\n"
+                                        temp_markdown += md_title
+                                        temp_markdown += (
+                                            f"![圖片]({temp_path})\n\n"
+                                        )
+                                        temp_markdown += (
+                                            f"{result['description']}\n\n"
+                                            f"---\n\n"
+                                        )
+
+                                        # 增加處理圖片計數
+                                        analyzed_count += 1
+
+                                        # 更新進度條
+                                        if progress_bar is not None:
+                                            progress_percentage = (
+                                                analyzed_count / 
+                                                total_images
+                                            )
+                                            progress_bar.progress(
+                                                progress_percentage
+                                            )
+                                    else:
+                                        error_msg = result.get(
+                                            'error', '未知錯誤'
+                                        )
+                                        st.error(
+                                            f"分析失敗: {error_msg}"
+                                        )
+                                else:
+                                    st.error(
+                                        f"處理上傳檔案時發生錯誤: {temp_path}"
+                                    )
+
+                            # 顯示處理完成訊息
+                            if analyzed_count > 0:
+                                msg = f"已完成 {analyzed_count} 張圖片的分析"
+                                st.success(msg)
+
+                        # 將分析結果存儲到 markdown_text 中
+                        if temp_markdown:
+                            st.session_state.markdown_text = temp_markdown
+                            st.success("所有內容處理完成，可以進行後續分析")
+                            st.rerun()
+
+    else:  # 直接輸入
+        # 文字輸入區域
+        user_text = st.text_area(
+            "直接輸入文字",
+            placeholder="在此輸入您的文字內容...",
+            help="直接輸入要處理的文字內容",
+            height=300
+        )
+
+        # 新增：轉錄提示設定
+        st.markdown("### 轉錄提示設定")
+        st.markdown("""
+        提供提示可以幫助模型更準確地識別特定術語、專有名詞或領域特定詞彙。
+        """)
+
+        transcription_prompt = st.text_area(
+            "轉錄提示 (可選)",
+            value=st.session_state.get("transcription_prompt", ""),
+            placeholder="例如：這是一段醫學演講，可能包含以下專業術語: 高血壓、糖尿病、心肌梗塞...",
+            help="提供上下文或領域特定的詞彙，以增強轉錄準確性"
+        )
+
+        # 儲存到 session state
+        st.session_state["transcription_prompt"] = transcription_prompt
+
+        if user_text:
+            # 處理按鈕
+            process_text_btn = st.button(
+                "✅ 處理文字內容",
+                use_container_width=True
+            )
+
+            if process_text_btn:
+                # 儲存用戶輸入的文字
+                st.session_state.markdown_text = user_text
+                st.success(
+                    f"文字內容已處理！長度: {len(user_text)} 字元"
+                )
+                st.rerun()
+
+
+
+def render_enhancement_tab():
+    """Step 2 的「增強與分析」分頁：關鍵詞提取、幻燈片增強、送往優化。"""
+    st.subheader("文本增強與分析")
+
+    # 是否有內容可以進行增強與分析
+    if not st.session_state.markdown_text:
+        st.info("請先在「內容輸入」標籤頁上傳文件、圖片或輸入文字")
+        return
+
+    # 顯示 Markdown 文字
+    st.text_area(
+        "內容預覽",
+        st.session_state.markdown_text,
+        height=250
+    )
+
+    # 增強選項
+    st.markdown("### 選擇增強操作")
+
+    enhancement_type = st.radio(
+        "選擇增強類型",
+        ["提取關鍵詞", "幻燈片增強", "傳送至優化功能"],
+        horizontal=True
+    )
+
+    # 檢查 API 金鑰是否存在
+    openai_api_key = st.session_state.get("openai_api_key", "")
+    if not openai_api_key and enhancement_type in ["提取關鍵詞", "幻燈片增強"]:
+        st.warning("請在側邊欄提供 OpenAI API 金鑰以進行增強操作")
+
+    # 根據增強類型顯示不同的選項
+    if enhancement_type == "提取關鍵詞" and openai_api_key:
+        col1, col2 = st.columns(2)
+
+        with col1:
+            model_for_keywords = st.selectbox(
+                "選擇模型",
+                [OPENAI_REFINE, OPENAI_REFINE_CHEAP],
+                index=1,
+                help="選擇用於提取關鍵詞的模型"
+            )
+
+        with col2:
+            keyword_count = st.number_input(
+                "關鍵詞數量",
+                min_value=5,
+                max_value=50,
+                value=10,
+                help="要提取的關鍵詞數量"
+            )
+
+        # 提取關鍵詞按鈕
+        if st.button("🔍 提取關鍵詞", use_container_width=True):
+            # 提取關鍵詞
+            keywords = process_markdown_extraction(
+                st.session_state.markdown_text,
+                openai_api_key,
+                model_for_keywords,
+                keyword_count
+            )
+
+            if keywords:
+                st.session_state.markdown_keywords = keywords
+                st.success(f"成功提取 {len(keywords)} 個關鍵詞")
+                st.rerun()
+
+        # 顯示已提取的關鍵詞
+        if st.session_state.markdown_keywords:
+            # 顯示關鍵詞
+            st.write("### 提取的關鍵詞")
+            for i, kw in enumerate(st.session_state.markdown_keywords):
+                st.write(f"{i+1}. {kw}")
+
+            # 複製關鍵詞按鈕
+            keywords_text = "\n".join(st.session_state.markdown_keywords)
+            st.download_button(
+                label="📋 下載關鍵詞列表",
+                data=keywords_text,
+                file_name="keywords.txt",
+                mime="text/plain",
+                help="下載提取的關鍵詞列表",
+                use_container_width=True
+            )
+
+            # 添加編輯關鍵詞的功能
+            if st.button("✏️ 編輯關鍵詞", use_container_width=True):
+                # 將關鍵詞列表顯示在文本區域中供編輯
+                st.session_state.editing_keywords = True
+                st.rerun()
+
+            # 當處於編輯模式時顯示編輯界面
+            if st.session_state.get("editing_keywords", False):
+                edit_keywords = st.text_area(
+                    "編輯關鍵詞（每行一個）",
+                    value="\n".join(st.session_state.markdown_keywords),
+                    height=200
+                )
+
+                col1, col2 = st.columns(2)
+                with col1:
+                    if st.button("✅ 確認修改", use_container_width=True):
+                        # 將編輯後的文本轉換為列表
+                        edited_keywords = [
+                            kw.strip() 
+                            for kw in edit_keywords.split("\n") 
+                            if kw.strip()
+                        ]
+                        if edited_keywords:
+                            kw_len = len(edited_keywords)
+                            update_msg = (
+                                f"已更新關鍵詞列表，共 {kw_len} 個關鍵詞"
+                            )
+                            st.session_state.markdown_keywords = (
+                                edited_keywords
+                            )
+                            st.session_state.editing_keywords = False
+                            st.success(update_msg)
+
+                with col2:
+                    if st.button("❌ 取消編輯", use_container_width=True):
+                        st.session_state.editing_keywords = False
+                        st.rerun()
+
+    elif enhancement_type == "幻燈片增強" and openai_api_key:
+        # 幻燈片增強說明
+        st.markdown("""
+        ### 幻燈片增強功能
+
+        此功能會自動識別 Markdown 中的圖片，使用 AI 為圖片添加詳細的描述，
+        並以折疊式描述的方式添加到幻燈片中。適合用於增強演示文稿的資訊量。
+
+        **幻燈片格式範例**：
+        ```markdown
+        <!-- Slide number: 1 -->
+        # 標題幻燈片
+
+        ## 副標題
+
+        * 項目一
+        * 項目二
+
+        ![圖片說明](images/example.jpg)
+        ```
+
+        > **注意**：建議使用 `<!-- Slide number: X -->` 作為幻燈片分隔符，
+        > 這將幫助系統正確識別每個幻燈片區塊。
+        """)
+
+        # 模型選擇
+        slide_model = st.selectbox(
+            "選擇模型",
+            [OPENAI_REFINE, OPENAI_REFINE_CHEAP],
+            index=1,
+            help="選擇用於幻燈片增強的模型"
+        )
+
+        # 增強按鈕
+        if st.button("✨ 增強幻燈片", use_container_width=True):
+            with st.spinner("正在增強幻燈片內容..."):
+                # 增強幻燈片
+                result = enhance_slides(
+                    st.session_state.markdown_text, 
+                    openai_api_key, 
+                    slide_model
+                )
+
+                # 將結果儲存到 session state
+                st.session_state.enhanced_slides = result["enhanced_text"]
+
+                # 顯示統計資訊
+                st.markdown("### 處理統計")
+                st.write(f"處理幻燈片數量: {result['stats']['slides_processed']}")
+                st.write(f"處理圖片數量: {result['stats']['images_processed']}")
+                st.write(f"成功分析圖片: {result['stats']['images_analyzed']}")
+                st.write(f"分析失敗圖片: {result['stats']['images_failed']}")
+                st.write(f"使用 Tokens: {result['stats']['total_tokens']}")
+
+                # 顯示增強後的內容
+                st.markdown("### 增強後的內容")
+                st.text_area(
+                    "增強後的幻燈片內容",
+                    result["enhanced_text"],
+                    height=400
+                )
+
+                # 下載按鈕
+                st.download_button(
+                    label="📥 下載增強後的幻燈片",
+                    data=result["enhanced_text"],
+                    file_name="enhanced_slides.md",
+                    mime="text/markdown",
+                    help="下載增強後的幻燈片 Markdown 檔案",
+                    use_container_width=True
+                )
+
+        # 顯示已增強的幻燈片
+        if st.session_state.enhanced_slides and not st.button:
+            st.markdown("### 已增強的幻燈片內容")
+            st.text_area(
+                "增強後的幻燈片內容",
+                st.session_state.enhanced_slides,
+                height=400
+            )
+
+            # 下載按鈕
+            st.download_button(
+                label="📥 下載增強後的幻燈片",
+                data=st.session_state.enhanced_slides,
+                file_name="enhanced_slides.md",
+                mime="text/markdown",
+                help="下載增強後的幻燈片 Markdown 檔案",
+                use_container_width=True
+            )
+
+    elif enhancement_type == "傳送至優化功能":
+        # 傳送至優化功能
+        if st.button(
+            "📤 傳送至文字優化功能 (Step 3)",
+            use_container_width=True
+        ):
+            st.session_state.transcribed_text = st.session_state.markdown_text
+            st.success("內容已傳送至文字優化功能 (Step 3)！")
+            st.rerun()
+
+    # 下載原始 Markdown 檔案
+    st.download_button(
+        label="📥 下載 Markdown 檔案",
+        data=st.session_state.markdown_text,
+        file_name="content.md",
+        mime="text/markdown",
+        help="下載當前內容的 Markdown 檔案",
+        use_container_width=True
+    )
+
+
 def render_markitdown_tab():
     """渲染 MarkItDown 標籤頁"""
     st.header("Step 1: 文件與圖像處理")
@@ -791,534 +1322,442 @@ def render_markitdown_tab():
     
     # 內容輸入標籤頁
     with tab1:
-        st.subheader("文件及圖片上傳或直接輸入")
-        
-        # 選擇輸入類型
-        input_type = st.radio(
-            "選擇輸入方式",
-            ["檔案上傳", "直接輸入"],
-            horizontal=True
-        )
-        
-        if input_type == "檔案上傳":
-            # 整合文件和圖片上傳為單一上傳區域
-            st.markdown("""
-            支持以下檔案類型：
-            - 文件：PDF, DOCX, DOC, PPTX, PPT, XLSX, XLS, CSV, TXT, RTF, HTML, 
-              HTM, MD, MARKDOWN
-            - 圖片：JPG, JPEG, PNG
-            
-            檔案大小限制：每個檔案 200MB
-            """)
-            
-            # 合併所有支持的檔案類型
-            all_supported_files = SUPPORTED_FILE_TYPES + ["jpg", "jpeg", "png"]
-            
-            # 單一上傳界面
-            uploaded_files = st.file_uploader(
-                "拖放檔案到此處上傳",
-                type=all_supported_files,
-                accept_multiple_files=True,
-                help="支持文件和圖片同時上傳，系統會自動識別檔案類型"
-            )
-            
-            # 檢查是否有 OpenAI API 金鑰
-            openai_api_key = st.session_state.get("openai_api_key", "")
-            
-            # 添加 Vision API 選項
-            use_vision_api = st.checkbox(
-                "🔍 啟用進階 Vision API 分析 (適用於複雜 PPTX 圖片投影片)",
-                value=False,
-                help="使用進階 Vision API 將整個 PPTX 轉為圖片進行深度分析。即使不勾選，MarkItDown 也會自動處理文件中的圖片內容。需要 OpenAI API 金鑰。"
-            )
-            
-            # 如果啟用了 Vision API 但沒有 API 金鑰，顯示警告
-            if use_vision_api and not openai_api_key:
-                st.warning("⚠️ 已啟用 Vision API，但未提供 OpenAI API 金鑰。請在側邊欄填入 API 金鑰以使用此功能。")
-            
-            # 處理說明
-            if uploaded_files:
-                # 分類上傳的檔案
-                doc_files = []
-                image_files = []
-                
-                for file in uploaded_files:
-                    file_ext = file.name.split('.')[-1].lower()
-                    if file_ext in ["jpg", "jpeg", "png"]:
-                        image_files.append(file)
-                    else:
-                        doc_files.append(file)
-                
-                # 顯示檔案資訊
-                if doc_files and image_files:
-                    st.info(
-                        f"已上傳 {len(doc_files)} 個文件和 {len(image_files)} 張圖片"
-                    )
-                    process_btn_label = "🔄 處理文件和分析圖片"
-                elif doc_files:
-                    st.info(f"已上傳 {len(doc_files)} 個文件")
-                    process_btn_label = "🔄 轉換文件為 Markdown"
-                elif image_files:
-                    st.info(f"已上傳 {len(image_files)} 張圖片")
-                    process_btn_label = "🔄 分析圖片"
-                else:
-                    st.warning("請上傳文件或圖片進行處理")
-                    return
-                
-                # 整合處理按鈕
-                if not openai_api_key:
-                    st.warning("請在側邊欄提供 OpenAI API 金鑰以進行分析")
-                else:
-                    process_btn = st.button(
-                        process_btn_label,
-                        use_container_width=True
-                    )
-                    
-                    if process_btn:
-                        # 處理流程
-                        with st.spinner("正在處理..."):
-                            temp_markdown = ""
-                            
-                            # 處理文件（如果有）
-                            if doc_files:
-                                # 處理第一個文件（目前只支援處理一個文件）
-                                uploaded_file = doc_files[0]
-                                success, temp_path = save_uploaded_file(
-                                    uploaded_file
-                                )
-                                
-                                if success:
-                                    # 轉換檔案
-                                    st.info("正在轉換文件...")
-                                    success, md_text, info = (
-                                        convert_file_to_markdown(
-                                            input_path=temp_path,
-                                            use_llm=use_vision_api,
-                                            api_key=openai_api_key,
-                                            model=OPENAI_VISION  # 視覺分析
-                                        )
-                                    )
-                                    
-                                    # 如果轉換失敗且是 magika 相關錯誤，提供修復建議
-                                    if not success and "magika" in str(info.get("error", "")).lower():
-                                        st.error("檔案轉換失敗：magika 套件配置問題")
-                                        st.markdown("""
-                                        **解決方案：**
-                                        1. 在終端機執行以下命令修復 magika 套件：
-                                        ```bash
-                                        python fix_magika.py
-                                        ```
-                                        
-                                        2. 或者手動執行：
-                                        ```bash
-                                        pip uninstall magika -y
-                                        pip install magika --no-cache-dir
-                                        ```
-                                        
-                                        3. 重新啟動應用程式
-                                        """)
-                                        # 跳過後續處理，直接返回
-                                        return
-                                    
-                                    # 清理臨時檔案
-                                    try:
-                                        os.remove(temp_path)
-                                    except Exception as e:
-                                        logger.error(
-                                            f"清理臨時檔案失敗: {str(e)}"
-                                        )
-                                        pass
-                                    
-                                    if success:
-                                        temp_markdown = md_text
-                                        st.success("文件轉換成功！")
-                                    else:
-                                        # 顯示錯誤資訊
-                                        st.error(
-                                            f"轉換失敗: {info.get('error', '未知錯誤')}"
-                                        )
-                                else:
-                                    st.error(
-                                        f"處理上傳檔案時發生錯誤: {temp_path}"
-                                    )
-                            
-                            # 處理圖片（如果有）
-                            if image_files:
-                                # 如果有文件轉換內容，添加分隔線和圖片分析標題
-                                if temp_markdown:
-                                    temp_markdown += "\n\n## 圖片分析\n\n"
-                                else:
-                                    temp_markdown = "# 圖片分析結果\n\n"
-                                
-                                # 保存和分析圖片
-                                analyzed_count = 0
-                                progress_bar = st.progress(0)
-                                total_images = len(image_files)
-                                
-                                for i, img_file in enumerate(image_files):
-                                    # 保存上傳的檔案
-                                    success, temp_path = save_uploaded_file(
-                                        img_file
-                                    )
-                                    
-                                    if success:
-                                        # 分析圖片
-                                        with st.spinner(
-                                            f"分析圖片 {i+1}/{total_images}..."
-                                        ):
-                                            result = analyze_image(
-                                                temp_path, 
-                                                openai_api_key, 
-                                                OPENAI_REFINE_CHEAP
-                                            )
-                                        
-                                        if result["success"]:
-                                            # 儲存分析結果
-                                            img_analysis = {
-                                                "path": temp_path,
-                                                "description": (
-                                                    result["description"]
-                                                ),
-                                                "tokens": result["tokens"]
-                                            }
-                                            st.session_state.analyzed_images[
-                                                img_file.name
-                                            ] = img_analysis
-                                            
-                                            # 顯示圖片和分析結果
-                                            st.image(
-                                                temp_path, 
-                                                caption=img_file.name
-                                            )
-                                            st.markdown("### 分析結果")
-                                            st.markdown(result["description"])
-                                            st.markdown("---")
-                                            
-                                            # 添加到臨時 Markdown
-                                            md_title = f"### {img_file.name}\n\n"
-                                            temp_markdown += md_title
-                                            temp_markdown += (
-                                                f"![圖片]({temp_path})\n\n"
-                                            )
-                                            temp_markdown += (
-                                                f"{result['description']}\n\n"
-                                                f"---\n\n"
-                                            )
-                                            
-                                            # 增加處理圖片計數
-                                            analyzed_count += 1
-                                            
-                                            # 更新進度條
-                                            if progress_bar is not None:
-                                                progress_percentage = (
-                                                    analyzed_count / 
-                                                    total_images
-                                                )
-                                                progress_bar.progress(
-                                                    progress_percentage
-                                                )
-                                        else:
-                                            error_msg = result.get(
-                                                'error', '未知錯誤'
-                                            )
-                                            st.error(
-                                                f"分析失敗: {error_msg}"
-                                            )
-                                    else:
-                                        st.error(
-                                            f"處理上傳檔案時發生錯誤: {temp_path}"
-                                        )
-                                
-                                # 顯示處理完成訊息
-                                if analyzed_count > 0:
-                                    msg = f"已完成 {analyzed_count} 張圖片的分析"
-                                    st.success(msg)
-                            
-                            # 將分析結果存儲到 markdown_text 中
-                            if temp_markdown:
-                                st.session_state.markdown_text = temp_markdown
-                                st.success("所有內容處理完成，可以進行後續分析")
-                                st.rerun()
-        
-        else:  # 直接輸入
-            # 文字輸入區域
-            user_text = st.text_area(
-                "直接輸入文字",
-                placeholder="在此輸入您的文字內容...",
-                help="直接輸入要處理的文字內容",
-                height=300
-            )
-            
-            # 新增：轉錄提示設定
-            st.markdown("### 轉錄提示設定")
-            st.markdown("""
-            提供提示可以幫助模型更準確地識別特定術語、專有名詞或領域特定詞彙。
-            """)
-            
-            transcription_prompt = st.text_area(
-                "轉錄提示 (可選)",
-                value=st.session_state.get("transcription_prompt", ""),
-                placeholder="例如：這是一段醫學演講，可能包含以下專業術語: 高血壓、糖尿病、心肌梗塞...",
-                help="提供上下文或領域特定的詞彙，以增強轉錄準確性"
-            )
-            
-            # 儲存到 session state
-            st.session_state["transcription_prompt"] = transcription_prompt
-            
-            if user_text:
-                # 處理按鈕
-                process_text_btn = st.button(
-                    "✅ 處理文字內容",
-                    use_container_width=True
-                )
-                
-                if process_text_btn:
-                    # 儲存用戶輸入的文字
-                    st.session_state.markdown_text = user_text
-                    st.success(
-                        f"文字內容已處理！長度: {len(user_text)} 字元"
-                    )
-                    st.rerun()
-    
+        render_content_input_tab()
     # 增強與分析標籤頁
     with tab2:
-        st.subheader("文本增強與分析")
-        
-        # 是否有內容可以進行增強與分析
-        if not st.session_state.markdown_text:
-            st.info("請先在「內容輸入」標籤頁上傳文件、圖片或輸入文字")
-            return
-        
-        # 顯示 Markdown 文字
-        st.text_area(
-            "內容預覽",
-            st.session_state.markdown_text,
-            height=250
+        render_enhancement_tab()
+
+def render_transcription_settings():
+    """畫出側欄的「轉錄設定」分頁，回傳 main() 後續會用到的選擇結果。
+
+    其餘設定（輸出格式、Gemini 金鑰與講者標記等）直接寫進 session_state。
+    """
+    # 選擇轉錄服務
+    transcription_service = st.selectbox(
+        "選擇轉錄服務",
+        options=["OpenAI", "Gemini"],
+        index=0,
+        help="選擇要使用的語音轉文字服務"
+    )
+
+    # 顯示服務說明
+    st.markdown(TRANSCRIPTION_SERVICE_INFO[transcription_service])
+
+    # 根據選擇的服務顯示對應的API金鑰輸入框
+    if transcription_service == "OpenAI":
+        # OpenAI API 金鑰
+        openai_api_key = st.text_input(
+            "OpenAI API 金鑰",
+            type="password",
+            value=st.session_state.get("openai_api_key", ""),
+            help="用於 OpenAI 的語音轉文字服務"
         )
-        
-        # 增強選項
-        st.markdown("### 選擇增強操作")
-        
-        enhancement_type = st.radio(
-            "選擇增強類型",
-            ["提取關鍵詞", "幻燈片增強", "傳送至優化功能"],
-            horizontal=True
+        # 儲存到 session state
+        st.session_state["openai_api_key"] = openai_api_key
+
+        # 允許用戶選擇轉錄模型
+        # 服務選擇已經決定了模型，這裡不再重複一個單選項的選單
+        transcribe_model = OPENAI_TRANSCRIBE
+        st.caption(
+            f"轉錄模型：{OPENAI_TRANSCRIBE}"
+            "（需要真實時間戳或講者標記請改選 Gemini 服務）"
         )
-        
-        # 檢查 API 金鑰是否存在
-        openai_api_key = st.session_state.get("openai_api_key", "")
-        if not openai_api_key and enhancement_type in ["提取關鍵詞", "幻燈片增強"]:
-            st.warning("請在側邊欄提供 OpenAI API 金鑰以進行增強操作")
-        
-        # 根據增強類型顯示不同的選項
-        if enhancement_type == "提取關鍵詞" and openai_api_key:
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                model_for_keywords = st.selectbox(
-                    "選擇模型",
-                    [OPENAI_REFINE, OPENAI_REFINE_CHEAP],
-                    index=1,
-                    help="選擇用於提取關鍵詞的模型"
-                )
-            
-            with col2:
-                keyword_count = st.number_input(
-                    "關鍵詞數量",
-                    min_value=5,
-                    max_value=50,
-                    value=10,
-                    help="要提取的關鍵詞數量"
-                )
-            
-            # 提取關鍵詞按鈕
-            if st.button("🔍 提取關鍵詞", use_container_width=True):
-                # 提取關鍵詞
-                keywords = process_markdown_extraction(
-                    st.session_state.markdown_text,
-                    openai_api_key,
-                    model_for_keywords,
-                    keyword_count
-                )
-                
-                if keywords:
-                    st.session_state.markdown_keywords = keywords
-                    st.success(f"成功提取 {len(keywords)} 個關鍵詞")
-                    st.rerun()
-            
-            # 顯示已提取的關鍵詞
-            if st.session_state.markdown_keywords:
-                # 顯示關鍵詞
-                st.write("### 提取的關鍵詞")
-                for i, kw in enumerate(st.session_state.markdown_keywords):
-                    st.write(f"{i+1}. {kw}")
-                
-                # 複製關鍵詞按鈕
-                keywords_text = "\n".join(st.session_state.markdown_keywords)
-                st.download_button(
-                    label="📋 下載關鍵詞列表",
-                    data=keywords_text,
-                    file_name="keywords.txt",
-                    mime="text/plain",
-                    help="下載提取的關鍵詞列表",
-                    use_container_width=True
-                )
-                
-                # 添加編輯關鍵詞的功能
-                if st.button("✏️ 編輯關鍵詞", use_container_width=True):
-                    # 將關鍵詞列表顯示在文本區域中供編輯
-                    st.session_state.editing_keywords = True
-                    st.rerun()
-                
-                # 當處於編輯模式時顯示編輯界面
-                if st.session_state.get("editing_keywords", False):
-                    edit_keywords = st.text_area(
-                        "編輯關鍵詞（每行一個）",
-                        value="\n".join(st.session_state.markdown_keywords),
-                        height=200
-                    )
-                    
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        if st.button("✅ 確認修改", use_container_width=True):
-                            # 將編輯後的文本轉換為列表
-                            edited_keywords = [
-                                kw.strip() 
-                                for kw in edit_keywords.split("\n") 
-                                if kw.strip()
-                            ]
-                            if edited_keywords:
-                                kw_len = len(edited_keywords)
-                                update_msg = (
-                                    f"已更新關鍵詞列表，共 {kw_len} 個關鍵詞"
-                                )
-                                st.session_state.markdown_keywords = (
-                                    edited_keywords
-                                )
-                                st.session_state.editing_keywords = False
-                                st.success(update_msg)
-                    
-                    with col2:
-                        if st.button("❌ 取消編輯", use_container_width=True):
-                            st.session_state.editing_keywords = False
-                            st.rerun()
-        
-        elif enhancement_type == "幻燈片增強" and openai_api_key:
-            # 幻燈片增強說明
-            st.markdown("""
-            ### 幻燈片增強功能
-            
-            此功能會自動識別 Markdown 中的圖片，使用 AI 為圖片添加詳細的描述，
-            並以折疊式描述的方式添加到幻燈片中。適合用於增強演示文稿的資訊量。
-            
-            **幻燈片格式範例**：
-            ```markdown
-            <!-- Slide number: 1 -->
-            # 標題幻燈片
-            
-            ## 副標題
-            
-            * 項目一
-            * 項目二
-            
-            ![圖片說明](images/example.jpg)
-            ```
-            
-            > **注意**：建議使用 `<!-- Slide number: X -->` 作為幻燈片分隔符，
-            > 這將幫助系統正確識別每個幻燈片區塊。
-            """)
-            
-            # 模型選擇
-            slide_model = st.selectbox(
-                "選擇模型",
-                [OPENAI_REFINE, OPENAI_REFINE_CHEAP],
-                index=1,
-                help="選擇用於幻燈片增強的模型"
-            )
-            
-            # 增強按鈕
-            if st.button("✨ 增強幻燈片", use_container_width=True):
-                with st.spinner("正在增強幻燈片內容..."):
-                    # 增強幻燈片
-                    result = enhance_slides(
-                        st.session_state.markdown_text, 
-                        openai_api_key, 
-                        slide_model
-                    )
-                    
-                    # 將結果儲存到 session state
-                    st.session_state.enhanced_slides = result["enhanced_text"]
-                    
-                    # 顯示統計資訊
-                    st.markdown("### 處理統計")
-                    st.write(f"處理幻燈片數量: {result['stats']['slides_processed']}")
-                    st.write(f"處理圖片數量: {result['stats']['images_processed']}")
-                    st.write(f"成功分析圖片: {result['stats']['images_analyzed']}")
-                    st.write(f"分析失敗圖片: {result['stats']['images_failed']}")
-                    st.write(f"使用 Tokens: {result['stats']['total_tokens']}")
-                    
-                    # 顯示增強後的內容
-                    st.markdown("### 增強後的內容")
-                    st.text_area(
-                        "增強後的幻燈片內容",
-                        result["enhanced_text"],
-                        height=400
-                    )
-                    
-                    # 下載按鈕
-                    st.download_button(
-                        label="📥 下載增強後的幻燈片",
-                        data=result["enhanced_text"],
-                        file_name="enhanced_slides.md",
-                        mime="text/markdown",
-                        help="下載增強後的幻燈片 Markdown 檔案",
-                        use_container_width=True
-                    )
-            
-            # 顯示已增強的幻燈片
-            if st.session_state.enhanced_slides and not st.button:
-                st.markdown("### 已增強的幻燈片內容")
-                st.text_area(
-                    "增強後的幻燈片內容",
-                    st.session_state.enhanced_slides,
-                    height=400
-                )
-                
-                # 下載按鈕
-                st.download_button(
-                    label="📥 下載增強後的幻燈片",
-                    data=st.session_state.enhanced_slides,
-                    file_name="enhanced_slides.md",
-                    mime="text/markdown",
-                    help="下載增強後的幻燈片 Markdown 檔案",
-                    use_container_width=True
-                )
-        
-        elif enhancement_type == "傳送至優化功能":
-            # 傳送至優化功能
-            if st.button(
-                "📤 傳送至文字優化功能 (Step 3)",
-                use_container_width=True
-            ):
-                st.session_state.transcribed_text = st.session_state.markdown_text
-                st.success("內容已傳送至文字優化功能 (Step 3)！")
-                st.rerun()
-        
-        # 下載原始 Markdown 檔案
-        st.download_button(
-            label="📥 下載 Markdown 檔案",
-            data=st.session_state.markdown_text,
-            file_name="content.md",
-            mime="text/markdown",
-            help="下載當前內容的 Markdown 檔案",
-            use_container_width=True
+        st.session_state["openai_model"] = transcribe_model
+
+        # 語言設定
+        language_mode = st.radio(
+            "語言設定",
+            options=["自動偵測", "指定語言"],
+            help="選擇音訊的語言處理模式"
         )
 
-def main():
-    """主程式函數"""
-    st.title("音訊轉文字與文件處理系統")
-    
-    # 初始化 session state
+        # 語言設定
+        if language_mode == "指定語言":
+            languages = {
+                "中文 (繁體/簡體)": "zh",
+                "英文": "en",
+                "日文": "ja",
+                "韓文": "ko",
+                "其他": "custom"
+            }
+
+            selected_lang = st.selectbox(
+                "選擇語言",
+                options=list(languages.keys())
+            )
+
+            if selected_lang == "其他":
+                custom_lang = st.text_input(
+                    "輸入語言代碼",
+                    placeholder="例如：fr 代表法文",
+                    help="請輸入 ISO 639-1 語言代碼"
+                )
+                language_code = custom_lang if custom_lang else None
+            else:
+                language_code = languages[selected_lang]
+        else:
+            language_code = None
+
+        # 輸出格式設定
+        output_format = st.radio(
+            "輸出格式",
+            options=["純文字", "Markdown", "SRT (含時間戳)"],
+            index=0,
+            help=("純文字：標準轉錄文字；"
+                 "Markdown：結構化格式；"
+                 "SRT：字幕格式，含時間戳")
+        )
+        st.session_state["output_format"] = output_format
+
+    elif transcription_service == "Gemini":
+        gemini_transcribe_key = st.text_input(
+            "Google API 金鑰",
+            type="password",
+            value=os.environ.get("GEMINI_API_KEY", ""),
+            help="用於 Gemini 語音轉文字服務"
+        )
+        st.session_state["gemini_transcribe_key"] = gemini_transcribe_key
+
+        st.session_state["gemini_diarization"] = st.checkbox(
+            "啟用講者標記",
+            value=True,
+            help="標出不同講者（最多 8 位）。關閉可改用專有名詞提示。"
+        )
+
+        # custom_vocabulary 與講者標記／時間戳互斥（API 限制）
+        if not st.session_state["gemini_diarization"]:
+            st.session_state["gemini_keywords"] = st.text_input(
+                "專有名詞提示（逗號分隔）",
+                help="例如 HbA1c,GLP-1,dapagliflozin。與講者標記互斥。"
+            )
+        else:
+            st.session_state["gemini_keywords"] = ""
+            st.caption("講者標記開啟時無法同時使用專有名詞提示（API 限制）")
+
+        # 語言設定
+        language_mode = st.radio(
+            "語言設定",
+            key="gemini_language_mode",
+            options=["自動偵測", "指定語言"],
+            help="選擇音訊的語言處理模式"
+        )
+
+        # 語言設定
+        if language_mode == "指定語言":
+            languages = {
+                "中文 (繁體/簡體)": "zh",
+                "英文": "en",
+                "日文": "ja",
+                "韓文": "ko",
+                "其他": "custom"
+            }
+
+            selected_lang = st.selectbox(
+                "選擇語言",
+                options=list(languages.keys()),
+                key="gemini_selected_lang"
+            )
+
+            if selected_lang == "其他":
+                custom_lang = st.text_input(
+                    "輸入語言代碼",
+                    placeholder="例如：fr 代表法文",
+                    help="請輸入 ISO 639-1 語言代碼",
+                    key="gemini_custom_lang"
+                )
+                language_code = custom_lang if custom_lang else None
+            else:
+                language_code = languages[selected_lang]
+        else:
+            language_code = None
+
+        # 輸出格式設定
+        output_format = st.radio(
+            "輸出格式",
+            key="gemini_output_format",
+            options=["純文字", "Markdown", "SRT (含時間戳)"],
+            index=0,
+            help=("純文字：標準轉錄文字；"
+                 "Markdown：結構化格式；"
+                 "SRT：字幕格式，含時間戳")
+        )
+        st.session_state["output_format"] = output_format
+
+    return transcription_service, language_code, openai_api_key
+
+
+def render_optimization_settings():
+    """畫出側欄的「優化設定」分頁。
+
+    選擇結果全部存進 session_state，呼叫端不需要接回傳值。
+    """
+    # 選擇優化服務
+    optimization_service = st.selectbox(
+        "選擇優化服務",
+        ["Gemini", "OpenAI"],
+        help="選擇要使用的文字優化服務"
+    )
+    # 將選擇存儲到 session state
+    st.session_state["optimization_service"] = optimization_service
+
+    # 顯示服務說明
+    st.markdown(OPTIMIZATION_SERVICE_INFO[optimization_service])
+
+    # 根據選擇的服務顯示對應的API金鑰輸入框
+    if optimization_service == "Gemini":
+        gemini_api_key = st.text_input(
+            "Google API 金鑰",
+            type="password",
+            value=st.session_state.get("gemini_api_key", ""),
+            help="用於 Gemini 模型優化文字"
+        )
+        st.session_state["gemini_api_key"] = gemini_api_key
+    else:  # OpenAI
+        openai_api_key = st.text_input(
+            "OpenAI API 金鑰",
+            type="password",
+            value=st.session_state.get("openai_api_key", ""),
+            help="用於 OpenAI 模型優化文字"
+        )
+        st.session_state["openai_api_key"] = openai_api_key
+
+    # 成本／品質分級：讓使用者自己決定，不要替他選
+    tier = st.radio(
+        "成本／品質分級",
+        options=list(TIER_ORDER),
+        index=1,  # 預設「標準」
+        format_func=lambda t: tier_label(optimization_service, t),
+        help="長逐字稿選經濟版可省很多；需要細膩改寫再往上選",
+        key="optimization_tier"
+    )
+    # 注意：widget 的 key 已經把值寫進 session_state，
+    # 再對同名 key 指派會讓 Streamlit 拋 StreamlitAPIException。
+    selected_model = MODEL_TIERS[optimization_service][tier]
+    st.session_state["optimization_model"] = selected_model
+    if optimization_service == "Gemini":
+        st.session_state["gemini_model"] = selected_model
+
+    # 優化提示 (增加文字優化效果)
+    st.markdown("### 優化提示設定")
+    st.markdown("""
+    提供上下文或特定指示可以使模型更好地理解內容並產生更符合需求的優化結果。
+    """)
+
+    optimization_prompt = st.text_area(
+        "優化提示 (可選)",
+        value=st.session_state.get("optimization_prompt", ""),
+        placeholder="例如：這是一場醫學研討會的演講稿，請特別注意醫學術語的正確性，並結構化為簡報格式...",
+        help="提供上下文或特定指示，以提升優化效果"
+    )
+
+    # 儲存到 session state
+    st.session_state["optimization_prompt"] = optimization_prompt
+
+    # 「創意程度」滑桿已移除：GPT-5.x 只接受預設 temperature（送其他值
+    # 會回 400），Gemini 3.x 則完全不接受這個參數。留著只是誤導使用者，
+    # 因為不論怎麼拉都不會影響輸出。要調整風格請用上面的「優化提示」。
+
+
+
+def transcribe_segments(audio_segments, transcription_service, language_code,
+                        openai_client, temp_path, progress_bar,
+                        segment_seconds=600, overlap_seconds=30):
+    """逐段轉錄，回傳 (segment_results, gemini_segments)。
+
+    這段原本內嵌在 main() 裡，縮排深到 13 層。抽出來之後每個服務的分支
+    都在同一個淺層級，也讓 Gemini 的重疊去重邏輯看得見。
+
+    gemini_segments 只有 Gemini 後端會填，裡面是換算成整檔絕對時間的
+    真實詞級時間戳。
+    """
+    segment_results = []
+    gemini_segments = []
+
+    for i, segment_path in enumerate(audio_segments):
+        if transcription_service == "Gemini":
+            # Gemini 走 interactions 轉錄 API，回傳真實時間戳
+            from gemini_transcribe import GeminiTranscriber
+
+            kw = [k.strip() for k in
+                  st.session_state.get("gemini_keywords", "").split(",")
+                  if k.strip()]
+            diarize = st.session_state.get("gemini_diarization", True)
+            # custom_vocabulary 與講者標記、詞級時間戳三者互斥。
+            # 使用者關掉講者標記又填了關鍵字，代表他要的是關鍵字；
+            # 這時必須一併關掉時間戳，否則關鍵字會被默默丟掉。
+            want_timestamps = diarize or not kw
+            transcriber = GeminiTranscriber(
+                st.session_state.get("gemini_transcribe_key") or None
+            )
+            gem = transcriber.transcribe_file(
+                segment_path,
+                language=language_code,
+                keywords=kw or None,
+                diarization=diarize,
+                word_timestamps=want_timestamps,
+            )
+            # 段落時間是相對於這個切片，補上整檔的位移
+            offset = max(
+                0,
+                i * segment_seconds - overlap_seconds if i > 0 else 0
+            )
+            for seg in gem.get("segments", []):
+                # 除了第一段，每段開頭的 overlap_seconds 與上一段
+                # 尾巴重疊，直接收下會讓字幕重複一次。
+                if i > 0 and seg["end"] <= overlap_seconds:
+                    continue
+                gemini_segments.append({
+                    "start": seg["start"] + offset,
+                    "end": seg["end"] + offset,
+                    "text": seg["text"],
+                })
+            result = gem.get("text", "")
+            segment_results.append(result)
+
+        elif transcription_service == "OpenAI":
+            MAX_RETRIES = 3
+            retry_count = 0
+            failed = True
+            while retry_count < MAX_RETRIES:
+                try:
+                    with open(segment_path, "rb") as audio_file:
+                        # GPT-4o 模型只支援 text 和 json 格式
+                        # 根據官方文件，gpt-transcribe 只支援 json 和 text
+                        selected_format = st.session_state.get("output_format", "純文字")
+                        if selected_format == "SRT (含時間戳)":
+                            api_format = "json"  # 使用 json 嘗試獲取時間信息
+                        else:
+                            api_format = "text"
+
+                        # 添加詳細的調試信息
+                        logger.info(f"準備轉錄分段 {i+1}/{len(audio_segments)}")
+                        logger.info(f"使用模型: {st.session_state['openai_model']}")
+                        logger.info(f"API 格式: {api_format}")
+                        logger.info(f"語言代碼: {language_code}")
+
+                        response = (
+                            openai_client.audio
+                            .transcriptions
+                            .create(
+                                model=st.session_state["openai_model"],
+                                file=audio_file,
+                                language=language_code,
+                                response_format=api_format,
+                                prompt=st.session_state["transcription_prompt"],
+                            )
+                        )
+                        # 成功則添加結果
+                        if api_format == "json":
+                            # JSON 格式，儲存完整回應以供後續處理
+                            segment_results.append(response)
+                            logger.info(f"JSON 回應長度: {len(str(response))}")
+                        else:
+                            # TEXT 格式，使用 .text 屬性
+                            text_result = response.text if hasattr(response, 'text') else str(response)
+                            segment_results.append(text_result)
+                            logger.info(f"文字結果長度: {len(text_result)}")
+                            logger.info(f"文字結果預覽: {text_result[:100]}...")
+                        logger.info(
+                            "成功轉錄分段 %d/%d",
+                            i + 1,
+                            len(audio_segments)
+                        )
+                        failed = False
+                        break
+                except Exception as e:
+                    retry_count += 1
+                    error_msg = str(e)
+                    logger.error(f"OpenAI API 錯誤詳細信息: {error_msg}")
+                    if retry_count < MAX_RETRIES:
+                        logger.warning(
+                            "處理分段 %d 失敗 (重試 %d/%d)：%s",
+                            i + 1,
+                            retry_count,
+                            MAX_RETRIES,
+                            error_msg
+                        )
+                        time.sleep(3)
+                    else:
+                        logger.error(
+                            "處理分段 %d 最終失敗：%s",
+                            i + 1,
+                            error_msg
+                        )
+                        # 顯示錯誤給用戶
+                        st.error(f"OpenAI API 錯誤: {error_msg}")
+            if failed:
+                # 若全部嘗試都失敗，附加空字串，確保完整排序
+                segment_results.append("")
+
+        # 更新進度
+        progress = (i + 1) / len(audio_segments)
+        progress_bar.progress(progress)
+
+        # 清理臨時檔案
+        try:
+            if segment_path != temp_path:
+                os.remove(segment_path)
+                logger.info(
+                    "已清理臨時檔案：%s",
+                    segment_path
+                )
+        except Exception as e:
+            logger.error(
+                "清理臨時檔案失敗：%s",
+                str(e)
+            )
+
+    return segment_results, gemini_segments
+
+
+def assemble_transcript(segment_results, gemini_segments,
+                        segment_seconds=600, overlap_seconds=30):
+    """把各分段的轉錄結果依輸出格式合併成一份文字。
+
+    gemini_segments 有值代表拿到真實詞級時間戳，SRT 直接用它；
+    否則退回 generate_srt_from_json 的估算時間軸。
+    """
+    # 合併結果
+    # 根據輸出格式處理結果
+    selected_format = st.session_state.get("output_format", "純文字")
+
+    if selected_format == "SRT (含時間戳)":
+        if gemini_segments:
+            # Gemini 給的是真實詞級時間戳，直接用，不必估算
+            full_transcript = generate_srt_from_segments(gemini_segments)
+        else:
+            full_transcript = generate_srt_from_json(
+                segment_results,
+                segment_duration=segment_seconds,
+                overlap_duration=overlap_seconds
+            )
+    elif selected_format == "Markdown":
+        # 從結果中提取文字內容
+        text_parts = []
+        for result in segment_results:
+            if hasattr(result, 'text'):
+                text_parts.append(result.text)
+            else:
+                text_parts.append(str(result))
+        raw_text = " ".join(text_parts)
+        full_transcript = f"# 語音轉錄結果\n\n{raw_text}\n"
+    else:
+        # 純文字格式，從結果中提取文字內容
+        text_parts = []
+        for result in segment_results:
+            if hasattr(result, 'text'):
+                text_parts.append(result.text)
+            else:
+                text_parts.append(str(result))
+        full_transcript = " ".join(text_parts)
+    return full_transcript
+
+
+def init_session_state():
+    """把所有 session_state 的預設值集中在一處初始化。
+
+    原本這 34 行散在 main() 開頭，讓真正的畫面邏輯被推到後面。
+    """
     if "transcribed_text" not in st.session_state:
         st.session_state.transcribed_text = None
     if "input_tokens" not in st.session_state:
@@ -1354,6 +1793,13 @@ def main():
     if "optimization_model" not in st.session_state:
         st.session_state["optimization_model"] = OPENAI_REFINE_CHEAP
 
+
+def main():
+    """主程式函數"""
+    st.title("音訊轉文字與文件處理系統")
+    
+    init_session_state()
+
     # 創建主要的功能標籤頁，添加步驟編號
     tabs_titles = [
         "🎬 Step 1: 影片轉音檔",
@@ -1381,225 +1827,13 @@ def main():
             
             # 轉錄設定標籤頁
             with tab1:
-                # 選擇轉錄服務
-                transcription_service = st.selectbox(
-                    "選擇轉錄服務",
-                    options=["OpenAI", "Gemini"],
-                    index=0,
-                    help="選擇要使用的語音轉文字服務"
+                transcription_service, language_code, openai_api_key = (
+                    render_transcription_settings()
                 )
-                
-                # 顯示服務說明
-                st.markdown(TRANSCRIPTION_SERVICE_INFO[transcription_service])
-                
-                # 根據選擇的服務顯示對應的API金鑰輸入框
-                if transcription_service == "OpenAI":
-                    # OpenAI API 金鑰
-                    openai_api_key = st.text_input(
-                        "OpenAI API 金鑰",
-                        type="password",
-                        value=st.session_state.get("openai_api_key", ""),
-                        help="用於 OpenAI 的語音轉文字服務"
-                    )
-                    # 儲存到 session state
-                    st.session_state["openai_api_key"] = openai_api_key
-                    
-                    # 允許用戶選擇轉錄模型
-                    # 服務選擇已經決定了模型，這裡不再重複一個單選項的選單
-                    transcribe_model = OPENAI_TRANSCRIBE
-                    st.caption(
-                        f"轉錄模型：{OPENAI_TRANSCRIBE}"
-                        "（需要真實時間戳或講者標記請改選 Gemini 服務）"
-                    )
-                    st.session_state["openai_model"] = transcribe_model
-                    
-                    # 語言設定
-                    language_mode = st.radio(
-                        "語言設定",
-                        options=["自動偵測", "指定語言"],
-                        help="選擇音訊的語言處理模式"
-                    )
-                    
-                    # 語言設定
-                    if language_mode == "指定語言":
-                        languages = {
-                            "中文 (繁體/簡體)": "zh",
-                            "英文": "en",
-                            "日文": "ja",
-                            "韓文": "ko",
-                            "其他": "custom"
-                        }
-                        
-                        selected_lang = st.selectbox(
-                            "選擇語言",
-                            options=list(languages.keys())
-                        )
-                        
-                        if selected_lang == "其他":
-                            custom_lang = st.text_input(
-                                "輸入語言代碼",
-                                placeholder="例如：fr 代表法文",
-                                help="請輸入 ISO 639-1 語言代碼"
-                            )
-                            language_code = custom_lang if custom_lang else None
-                        else:
-                            language_code = languages[selected_lang]
-                    else:
-                        language_code = None
-                    
-                    # 輸出格式設定
-                    output_format = st.radio(
-                        "輸出格式",
-                        options=["純文字", "Markdown", "SRT (含時間戳)"],
-                        index=0,
-                        help=("純文字：標準轉錄文字；"
-                             "Markdown：結構化格式；"
-                             "SRT：字幕格式，含時間戳")
-                    )
-                    st.session_state["output_format"] = output_format
-                
-                elif transcription_service == "Gemini":
-                    gemini_transcribe_key = st.text_input(
-                        "Google API 金鑰",
-                        type="password",
-                        value=os.environ.get("GEMINI_API_KEY", ""),
-                        help="用於 Gemini 語音轉文字服務"
-                    )
-                    st.session_state["gemini_transcribe_key"] = gemini_transcribe_key
-
-                    st.session_state["gemini_diarization"] = st.checkbox(
-                        "啟用講者標記",
-                        value=True,
-                        help="標出不同講者（最多 8 位）。關閉可改用專有名詞提示。"
-                    )
-
-                    # custom_vocabulary 與講者標記／時間戳互斥（API 限制）
-                    if not st.session_state["gemini_diarization"]:
-                        st.session_state["gemini_keywords"] = st.text_input(
-                            "專有名詞提示（逗號分隔）",
-                            help="例如 HbA1c,GLP-1,dapagliflozin。與講者標記互斥。"
-                        )
-                    else:
-                        st.session_state["gemini_keywords"] = ""
-                        st.caption("講者標記開啟時無法同時使用專有名詞提示（API 限制）")
-
-                    # 語言設定
-                    language_mode = st.radio(
-                        "語言設定",
-                        key="gemini_language_mode",
-                        options=["自動偵測", "指定語言"],
-                        help="選擇音訊的語言處理模式"
-                    )
-                    
-                    # 語言設定
-                    if language_mode == "指定語言":
-                        languages = {
-                            "中文 (繁體/簡體)": "zh",
-                            "英文": "en",
-                            "日文": "ja",
-                            "韓文": "ko",
-                            "其他": "custom"
-                        }
-                        
-                        selected_lang = st.selectbox(
-                            "選擇語言",
-                            options=list(languages.keys()),
-                            key="gemini_selected_lang"
-                        )
-                        
-                        if selected_lang == "其他":
-                            custom_lang = st.text_input(
-                                "輸入語言代碼",
-                                placeholder="例如：fr 代表法文",
-                                help="請輸入 ISO 639-1 語言代碼",
-                                key="gemini_custom_lang"
-                            )
-                            language_code = custom_lang if custom_lang else None
-                        else:
-                            language_code = languages[selected_lang]
-                    else:
-                        language_code = None
-                    
-                    # 輸出格式設定
-                    output_format = st.radio(
-                        "輸出格式",
-                        key="gemini_output_format",
-                        options=["純文字", "Markdown", "SRT (含時間戳)"],
-                        index=0,
-                        help=("純文字：標準轉錄文字；"
-                             "Markdown：結構化格式；"
-                             "SRT：字幕格式，含時間戳")
-                    )
-                    st.session_state["output_format"] = output_format
 
             # 優化設定標籤頁
             with tab2:
-                # 選擇優化服務
-                optimization_service = st.selectbox(
-                    "選擇優化服務",
-                    ["Gemini", "OpenAI"],
-                    help="選擇要使用的文字優化服務"
-                )
-                # 將選擇存儲到 session state
-                st.session_state["optimization_service"] = optimization_service
-                
-                # 顯示服務說明
-                st.markdown(OPTIMIZATION_SERVICE_INFO[optimization_service])
-                
-                # 根據選擇的服務顯示對應的API金鑰輸入框
-                if optimization_service == "Gemini":
-                    gemini_api_key = st.text_input(
-                        "Google API 金鑰",
-                        type="password",
-                        value=st.session_state.get("gemini_api_key", ""),
-                        help="用於 Gemini 模型優化文字"
-                    )
-                    st.session_state["gemini_api_key"] = gemini_api_key
-                else:  # OpenAI
-                    openai_api_key = st.text_input(
-                        "OpenAI API 金鑰",
-                        type="password",
-                        value=st.session_state.get("openai_api_key", ""),
-                        help="用於 OpenAI 模型優化文字"
-                    )
-                    st.session_state["openai_api_key"] = openai_api_key
-
-                # 成本／品質分級：讓使用者自己決定，不要替他選
-                tier = st.radio(
-                    "成本／品質分級",
-                    options=list(TIER_ORDER),
-                    index=1,  # 預設「標準」
-                    format_func=lambda t: tier_label(optimization_service, t),
-                    help="長逐字稿選經濟版可省很多；需要細膩改寫再往上選",
-                    key="optimization_tier"
-                )
-                # 注意：widget 的 key 已經把值寫進 session_state，
-                # 再對同名 key 指派會讓 Streamlit 拋 StreamlitAPIException。
-                selected_model = MODEL_TIERS[optimization_service][tier]
-                st.session_state["optimization_model"] = selected_model
-                if optimization_service == "Gemini":
-                    st.session_state["gemini_model"] = selected_model
-
-                # 優化提示 (增加文字優化效果)
-                st.markdown("### 優化提示設定")
-                st.markdown("""
-                提供上下文或特定指示可以使模型更好地理解內容並產生更符合需求的優化結果。
-                """)
-                
-                optimization_prompt = st.text_area(
-                    "優化提示 (可選)",
-                    value=st.session_state.get("optimization_prompt", ""),
-                    placeholder="例如：這是一場醫學研討會的演講稿，請特別注意醫學術語的正確性，並結構化為簡報格式...",
-                    help="提供上下文或特定指示，以提升優化效果"
-                )
-                
-                # 儲存到 session state
-                st.session_state["optimization_prompt"] = optimization_prompt
-                
-                # 「創意程度」滑桿已移除：GPT-5.x 只接受預設 temperature（送其他值
-                # 會回 400），Gemini 3.x 則完全不接受這個參數。留著只是誤導使用者，
-                # 因為不論怎麼拉都不會影響輸出。要調整風格請用上面的「優化提示」。
-            
+                render_optimization_settings()
             # 作者資訊
             st.markdown("---")
             st.markdown("""
@@ -1745,6 +1979,7 @@ def main():
                     # 初始化變數
                     full_transcript = ""
                     
+                    openai_client = None
                     # 初始化 OpenAI 客戶端（如果需要）
                     if transcription_service == "OpenAI":
                         openai_client = OpenAI(api_key=openai_api_key)
@@ -1839,182 +2074,20 @@ def main():
                             logger.info("音訊長度適中，不需分段處理")
                         
                         progress_bar = st.progress(0)
-                        segment_results = []
-                        # Gemini 回傳的真實時間戳，累積起來直接產 SRT
-                        gemini_segments = []
                         SEGMENT_SECONDS = 600
                         OVERLAP_SECONDS = 30
                         
-                        for i, segment_path in enumerate(audio_segments):
-                            if transcription_service == "Gemini":
-                                # Gemini 走 interactions 轉錄 API，回傳真實時間戳
-                                from gemini_transcribe import GeminiTranscriber
-
-                                kw = [k.strip() for k in
-                                      st.session_state.get("gemini_keywords", "").split(",")
-                                      if k.strip()]
-                                diarize = st.session_state.get("gemini_diarization", True)
-                                # custom_vocabulary 與講者標記、詞級時間戳三者互斥。
-                                # 使用者關掉講者標記又填了關鍵字，代表他要的是關鍵字；
-                                # 這時必須一併關掉時間戳，否則關鍵字會被默默丟掉。
-                                want_timestamps = diarize or not kw
-                                transcriber = GeminiTranscriber(
-                                    st.session_state.get("gemini_transcribe_key") or None
-                                )
-                                gem = transcriber.transcribe_file(
-                                    segment_path,
-                                    language=language_code,
-                                    keywords=kw or None,
-                                    diarization=diarize,
-                                    word_timestamps=want_timestamps,
-                                )
-                                # 段落時間是相對於這個切片，補上整檔的位移
-                                offset = max(
-                                    0,
-                                    i * SEGMENT_SECONDS - OVERLAP_SECONDS if i > 0 else 0
-                                )
-                                for seg in gem.get("segments", []):
-                                    # 除了第一段，每段開頭的 OVERLAP_SECONDS 與上一段
-                                    # 尾巴重疊，直接收下會讓字幕重複一次。
-                                    if i > 0 and seg["end"] <= OVERLAP_SECONDS:
-                                        continue
-                                    gemini_segments.append({
-                                        "start": seg["start"] + offset,
-                                        "end": seg["end"] + offset,
-                                        "text": seg["text"],
-                                    })
-                                result = gem.get("text", "")
-                                segment_results.append(result)
-
-                            elif transcription_service == "OpenAI":
-                                MAX_RETRIES = 3
-                                retry_count = 0
-                                failed = True
-                                while retry_count < MAX_RETRIES:
-                                    try:
-                                        with open(segment_path, "rb") as audio_file:
-                                            # GPT-4o 模型只支援 text 和 json 格式
-                                            # 根據官方文件，gpt-transcribe 只支援 json 和 text
-                                            selected_format = st.session_state.get("output_format", "純文字")
-                                            if selected_format == "SRT (含時間戳)":
-                                                api_format = "json"  # 使用 json 嘗試獲取時間信息
-                                            else:
-                                                api_format = "text"
-                                            
-                                            # 添加詳細的調試信息
-                                            logger.info(f"準備轉錄分段 {i+1}/{len(audio_segments)}")
-                                            logger.info(f"使用模型: {st.session_state['openai_model']}")
-                                            logger.info(f"API 格式: {api_format}")
-                                            logger.info(f"語言代碼: {language_code}")
-                                            
-                                            response = (
-                                                openai_client.audio
-                                                .transcriptions
-                                                .create(
-                                                    model=st.session_state["openai_model"],
-                                                    file=audio_file,
-                                                    language=language_code,
-                                                    response_format=api_format,
-                                                    prompt=st.session_state["transcription_prompt"],
-                                                )
-                                            )
-                                            # 成功則添加結果
-                                            if api_format == "json":
-                                                # JSON 格式，儲存完整回應以供後續處理
-                                                segment_results.append(response)
-                                                logger.info(f"JSON 回應長度: {len(str(response))}")
-                                            else:
-                                                # TEXT 格式，使用 .text 屬性
-                                                text_result = response.text if hasattr(response, 'text') else str(response)
-                                                segment_results.append(text_result)
-                                                logger.info(f"文字結果長度: {len(text_result)}")
-                                                logger.info(f"文字結果預覽: {text_result[:100]}...")
-                                            logger.info(
-                                                "成功轉錄分段 %d/%d",
-                                                i + 1,
-                                                len(audio_segments)
-                                            )
-                                            failed = False
-                                            break
-                                    except Exception as e:
-                                        retry_count += 1
-                                        error_msg = str(e)
-                                        logger.error(f"OpenAI API 錯誤詳細信息: {error_msg}")
-                                        if retry_count < MAX_RETRIES:
-                                            logger.warning(
-                                                "處理分段 %d 失敗 (重試 %d/%d)：%s",
-                                                i + 1,
-                                                retry_count,
-                                                MAX_RETRIES,
-                                                error_msg
-                                            )
-                                            time.sleep(3)
-                                        else:
-                                            logger.error(
-                                                "處理分段 %d 最終失敗：%s",
-                                                i + 1,
-                                                error_msg
-                                            )
-                                            # 顯示錯誤給用戶
-                                            st.error(f"OpenAI API 錯誤: {error_msg}")
-                                if failed:
-                                    # 若全部嘗試都失敗，附加空字串，確保完整排序
-                                    segment_results.append("")
-                            
-                            # 更新進度
-                            progress = (i + 1) / len(audio_segments)
-                            progress_bar.progress(progress)
-                            
-                            # 清理臨時檔案
-                            try:
-                                if segment_path != temp_path:
-                                    os.remove(segment_path)
-                                    logger.info(
-                                        "已清理臨時檔案：%s",
-                                        segment_path
-                                    )
-                            except Exception as e:
-                                logger.error(
-                                    "清理臨時檔案失敗：%s",
-                                    str(e)
-                                )
+                        segment_results, gemini_segments = transcribe_segments(
+                            audio_segments, transcription_service, language_code,
+                            openai_client, temp_path, progress_bar,
+                            SEGMENT_SECONDS, OVERLAP_SECONDS)
                         
                         # 增加調試日誌
                         logger.info(f"共處理 {len(segment_results)} 個分段結果")
                         
-                        # 合併結果
-                        # 根據輸出格式處理結果
-                        selected_format = st.session_state.get("output_format", "純文字")
-                        
-                        if selected_format == "SRT (含時間戳)":
-                            if gemini_segments:
-                                # Gemini 給的是真實詞級時間戳，直接用，不必估算
-                                full_transcript = generate_srt_from_segments(gemini_segments)
-                            else:
-                                full_transcript = generate_srt_from_json(
-                                    segment_results,
-                                    segment_duration=SEGMENT_SECONDS,
-                                    overlap_duration=OVERLAP_SECONDS
-                                )
-                        elif selected_format == "Markdown":
-                            # 從結果中提取文字內容
-                            text_parts = []
-                            for result in segment_results:
-                                if hasattr(result, 'text'):
-                                    text_parts.append(result.text)
-                                else:
-                                    text_parts.append(str(result))
-                            raw_text = " ".join(text_parts)
-                            full_transcript = f"# 語音轉錄結果\n\n{raw_text}\n"
-                        else:
-                            # 純文字格式，從結果中提取文字內容
-                            text_parts = []
-                            for result in segment_results:
-                                if hasattr(result, 'text'):
-                                    text_parts.append(result.text)
-                                else:
-                                    text_parts.append(str(result))
-                            full_transcript = " ".join(text_parts)
+                        full_transcript = assemble_transcript(
+                            segment_results, gemini_segments,
+                            SEGMENT_SECONDS, OVERLAP_SECONDS)
                         
                         # 添加調試日誌
                         logger.info(f"轉錄結果長度: {len(full_transcript) if full_transcript else 0}")
