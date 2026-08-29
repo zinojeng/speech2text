@@ -885,7 +885,7 @@ if __name__ == "__main__":
             success=True,
             content="這是測試摘要內容1...",
             processing_time=12.3,
-            model_used="gemini-2.5-pro",
+            model_used="gemini-3.7-flash",
             agenda_used=True,
             images_inserted=2
         )

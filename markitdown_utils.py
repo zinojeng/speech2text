@@ -42,7 +42,7 @@ def reinstall_magika():
 def convert_file_to_markdown(input_path: str,
                              use_llm: bool = False,
                              api_key: Optional[str] = None,
-                             model: str = "gpt-4o") -> Tuple[bool, str,
+                             model: str = "gpt-5.6-terra") -> Tuple[bool, str,
                                                              Dict[str, Any]]:
     """
     將檔案轉換為 Markdown 格式，可選用 LLM 處理圖片
@@ -112,7 +112,7 @@ def convert_file_to_markdown(input_path: str,
                 llm_client.models.list() 
                 logger.info("OpenAI API Key 驗證成功，將用於 MarkItDown 圖片處理。")
                 md_kwargs["llm_client"] = llm_client
-                md_kwargs["llm_model"] = model if use_llm else "gpt-4o-mini"  # 默認使用較便宜的模型
+                md_kwargs["llm_model"] = model if use_llm else "gpt-5.6-luna"  # 默認使用較便宜的模型
                 llm_info["status"] = "啟用成功"
                 llm_info["model"] = md_kwargs["llm_model"]
             except AuthenticationError:
@@ -293,7 +293,7 @@ def convert_url_to_markdown(url: str) -> Tuple[bool, str, Dict[str, Any]]:
         logger.error(error_details)
         return False, "", {"error": str(e), "details": error_details}
 
-def extract_keywords(markdown_text: str, api_key: str, model: str = "gpt-4o-mini", count: int = 10) -> List[str]:
+def extract_keywords(markdown_text: str, api_key: str, model: str = "gpt-5.6-luna", count: int = 10) -> List[str]:
     """
     從 Markdown 文字中提取關鍵詞
     
@@ -363,7 +363,7 @@ def convert_images_to_markdown(
     title: str = "圖片集合",
     use_llm: bool = True,
     api_key: Optional[str] = None,
-    model: str = "gpt-4o-mini"
+    model: str = "gpt-5.6-luna"
 ) -> Tuple[bool, str, Dict[str, Any]]:
     """
     將多個圖片檔案轉換為單一 Markdown 檔案

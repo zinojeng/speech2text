@@ -1483,7 +1483,7 @@ if __name__ == "__main__":
         success=True,
         content="## 會議摘要\n\n這是測試的摘要內容，包含主要重點和結論。\n\n### 重要決議\n\n- 決議一\n- 決議二",
         processing_time=12.8,
-        model_used="gemini-2.5-pro-preview-06-05",
+        model_used="gemini-3.7-flash",
         agenda_used=True,
         images_inserted=2
     )

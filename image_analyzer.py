@@ -32,7 +32,7 @@ def encode_image_to_base64(image_path: str) -> Optional[str]:
 def analyze_image(
     image_path: str, 
     api_key: str, 
-    model: str = "o4-mini"
+    model: str = "gpt-5.6-luna"
 ) -> Dict:
     """
     使用 OpenAI API 解析圖片內容
@@ -40,7 +40,7 @@ def analyze_image(
     Args:
         image_path (str): 圖片檔案路徑
         api_key (str): OpenAI API 金鑰
-        model (str, optional): 使用的模型名稱. 預設為 "o4-mini"
+        model (str, optional): 使用的模型名稱. 預設為 "gpt-5.6-luna"
         
     Returns:
         Dict: 解析結果，包含描述和相關資訊
@@ -106,7 +106,7 @@ def enhance_markdown_with_image_analysis(
     markdown_text: str, 
     base_dir: str, 
     api_key: str,
-    model: str = "o4-mini"
+    model: str = "gpt-5.6-luna"
 ) -> Tuple[str, Dict]:
     """
     增強 Markdown 文本，為圖片添加解析描述
@@ -115,7 +115,7 @@ def enhance_markdown_with_image_analysis(
         markdown_text (str): 原始 Markdown 文本
         base_dir (str): 圖片基礎目錄路徑
         api_key (str): OpenAI API 金鑰
-        model (str, optional): 使用的模型名稱. 預設為 "o4-mini"
+        model (str, optional): 使用的模型名稱. 預設為 "gpt-5.6-luna"
         
     Returns:
         Tuple[str, Dict]: 增強後的 Markdown 文本和解析統計資訊
@@ -176,7 +176,7 @@ def enhance_markdown_with_image_analysis(
 def enhance_slides(
     markdown_text: str,
     api_key: str,
-    model: str = "o4-mini"
+    model: str = "gpt-5.6-luna"
 ) -> Dict:
     """
     增強幻燈片內容，識別幻燈片中的圖片並添加描述
@@ -184,7 +184,7 @@ def enhance_slides(
     Args:
         markdown_text (str): 幻燈片的 Markdown 文本
         api_key (str): OpenAI API 金鑰
-        model (str, optional): 使用的模型名稱. 預設為 "o4-mini"
+        model (str, optional): 使用的模型名稱. 預設為 "gpt-5.6-luna"
         
     Returns:
         Dict: 增強結果，包含增強後的文本和統計資訊
@@ -245,7 +245,7 @@ def enhance_slides(
 def batch_process_images(
     image_paths: List[str], 
     api_key: str, 
-    model: str = "o4-mini"
+    model: str = "gpt-5.6-luna"
 ) -> Dict:
     """
     批次處理多張圖片
@@ -253,7 +253,7 @@ def batch_process_images(
     Args:
         image_paths (List[str]): 圖片路徑列表
         api_key (str): OpenAI API 金鑰
-        model (str, optional): 使用的模型名稱. 預設為 "o4-mini"
+        model (str, optional): 使用的模型名稱. 預設為 "gpt-5.6-luna"
         
     Returns:
         Dict: 批次處理結果

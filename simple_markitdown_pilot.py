@@ -19,7 +19,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger("markitdown-pilot")
 
-def convert_file_to_markdown(input_path, output_path=None, verbose=False, use_llm=False, api_key=None, model="gpt-4o"):
+def convert_file_to_markdown(input_path, output_path=None, verbose=False, use_llm=False, api_key=None, model="gpt-5.6-terra"):
     """
     將檔案轉換為 Markdown 格式，可選用 LLM 處理圖片
     
@@ -181,7 +181,7 @@ def main():
     )
     parser.add_argument(
         "--model",
-        default="gpt-4o",
+        default="gpt-5.6-terra",
         help="OpenAI 模型名稱 (默認: gpt-4o)"
     )
     

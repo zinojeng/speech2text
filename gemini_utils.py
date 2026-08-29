@@ -20,16 +20,7 @@ def call_gemini_api(prompt: str, model: str = GEMINI_REFINE_CHEAP, api_key: Opti
         Generated text or None if failed
     """
     try:
-        if genai is None:
-            print("Google Generative AI not installed. Skipping summary generation.")
-            return None
-            
-        # Use provided API key or get from environment
-        if not api_key:
-            api_key = os.getenv("GOOGLE_API_KEY")
-        
-        if not api_key:
-            raise ValueError("No Google API key provided")
+        # 金鑰解析交給共用邏輯（GEMINI_API_KEY 或 GOOGLE_API_KEY 皆可）
         
         # Gemini 3.x 不接受 temperature / top_p / top_k（會回 400），
         # 所以這裡只保留 max_output_tokens。

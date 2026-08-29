@@ -4,16 +4,16 @@ import streamlit as st
 
 # 定義可用的 OpenAI 模型
 OPENAI_MODELS = {
-    "gpt-4o": "GPT-4o",
-    "gpt-4o-mini": "GPT-4o-mini",
-    "o1-mini": "o1-mini",
-    "o3-mini": "o3-mini"
+    "gpt-5.6-terra": "GPT-4o",
+    "gpt-5.6-luna": "GPT-4o-mini",
+    "gpt-5.6-luna": "gpt-5.6-luna",
+    "gpt-5.6-luna": "gpt-5.6-luna"
 }
 
 def refine_transcript(
     raw_text: str,
     api_key: str,
-    model: str = "o3-mini",
+    model: str = "gpt-5.6-luna",
     temperature: float = 0.5,
     context: Optional[str] = None
 ) -> Optional[Dict[str, Any]]:
@@ -53,7 +53,7 @@ def refine_transcript(
         }
         
         # 只有 gpt-4o 和 gpt-4o-mini 支援 temperature
-        if model.startswith("gpt-4"):
+        if model.startswith("gpt-5.6-terra"):
             params["temperature"] = temperature
         
         # 第一步：修正並轉換為繁體中文
@@ -113,7 +113,7 @@ def refine_transcript(
 def convert_to_traditional_chinese(
     text: str,
     api_key: str,
-    model: str = "o3-mini"
+    model: str = "gpt-5.6-luna"
 ) -> str:
     """將文字轉換為繁體中文"""
     client = OpenAI(api_key=api_key)

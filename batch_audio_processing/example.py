@@ -65,7 +65,7 @@ def example_custom_config():
         # 創建自訂配置
         config = ProcessingConfig(
             transcription_model="gpt-transcribe",
-            summary_model="gemini-2.5-pro-preview-06-05",
+            summary_model="gemini-3.7-flash",
             output_format="markdown",
             max_workers=2,
             retry_attempts=3,

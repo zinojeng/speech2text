@@ -37,7 +37,7 @@ def process_markdown_file(
     input_file: str,
     output_file: Optional[str] = None,
     api_key: Optional[str] = None,
-    model: str = "o4-mini",
+    model: str = "gpt-5.6-luna",
     image_base_dir: Optional[str] = None
 ) -> Dict:
     """
@@ -47,7 +47,7 @@ def process_markdown_file(
         input_file (str): 輸入 Markdown 檔案路徑
         output_file (Optional[str]): 輸出 Markdown 檔案路徑，如果為 None 則替換原檔案
         api_key (Optional[str]): OpenAI API 金鑰，如果為 None 則嘗試從環境變數獲取
-        model (str): 使用的 OpenAI 模型，預設為 "o4-mini"
+        model (str): 使用的 OpenAI 模型，預設為 "gpt-5.6-luna"
         image_base_dir (Optional[str]): 圖片基礎目錄，如果為 None 則使用輸入檔案的目錄
         
     Returns:
@@ -119,7 +119,7 @@ def batch_process_directory(
     directory: str,
     output_directory: Optional[str] = None,
     api_key: Optional[str] = None,
-    model: str = "o4-mini",
+    model: str = "gpt-5.6-luna",
     file_extension: str = ".md"
 ) -> Dict:
     """
@@ -129,7 +129,7 @@ def batch_process_directory(
         directory (str): 輸入目錄路徑
         output_directory (Optional[str]): 輸出目錄路徑，如果為 None 則在輸入檔案旁邊建立新檔案
         api_key (Optional[str]): OpenAI API 金鑰
-        model (str): 使用的 OpenAI 模型，預設為 "o4-mini"
+        model (str): 使用的 OpenAI 模型，預設為 "gpt-5.6-luna"
         file_extension (str): 要處理的檔案副檔名，預設為 ".md"
         
     Returns:
@@ -253,7 +253,7 @@ def main():
     )
     parser.add_argument(
         "--model", "-m",
-        default="o4-mini",
+        default="gpt-5.6-luna",
         help="使用的 OpenAI 模型，預設為 o4-mini"
     )
     parser.add_argument(

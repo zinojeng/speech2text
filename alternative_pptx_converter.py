@@ -96,7 +96,7 @@ def convert_pptx_to_images(pptx_path: str, output_dir: str) -> List[str]:
         logger.error(f"轉換 PPTX 為圖片時發生錯誤: {e}")
         return []
 
-def analyze_pptx_with_vision(pptx_path: str, api_key: str, model: str = "gpt-4o") -> Tuple[bool, str, dict]:
+def analyze_pptx_with_vision(pptx_path: str, api_key: str, model: str = "gpt-5.6-terra") -> Tuple[bool, str, dict]:
     """
     使用 Vision API 分析 PPTX 檔案
     
@@ -150,7 +150,7 @@ def analyze_pptx_with_vision(pptx_path: str, api_key: str, model: str = "gpt-4o"
                                 ]
                             }
                         ],
-                        max_tokens=1000,
+                        max_completion_tokens=1000,
                         temperature=0.3
                     )
                     

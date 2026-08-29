@@ -71,28 +71,30 @@ def main():
         with open(args.audio_file, "rb") as audio_file:
             print("開始轉錄...")
             
-            # 根據格式設定 response_format
-            response_format = "text"
+            # gpt-transcribe 只支援 json / text；srt 需要真實時間戳，
+            # 只有 gemini-3.5-transcribe 給得出來。
             if args.format == "srt":
-                response_format = "srt"
-            elif args.format == "markdown":
-                response_format = "text"  # 先取得文字再轉換為 markdown
-            
+                print(
+                    "錯誤：OpenAI 的轉錄模型不回傳時間戳，無法直接產生 SRT。\n"
+                    "      請改用 gemini-3.5-transcribe（詞級時間戳＋講者標記）。"
+                )
+                return
+
             transcript = client.audio.transcriptions.create(
                 model=args.model,
                 file=audio_file,
                 language=args.language,
-                response_format=response_format
+                response_format="text"
             )
-            
+
+            # response_format="text" 時 SDK 直接回傳字串，沒有 .text 屬性
+            text = transcript if isinstance(transcript, str) else getattr(transcript, "text", str(transcript))
+
             print("轉錄結果:")
             if args.format == "markdown":
-                # 將文字轉換為 markdown 格式
-                markdown_text = f"# 語音轉錄結果\n\n{transcript.text}\n"
-                print(markdown_text)
+                print(f"# 語音轉錄結果\n\n{text}\n")
             else:
-                # text 或 srt 格式直接輸出
-                print(transcript.text)
+                print(text)
                 
     except Exception as e:
         print(f"轉錄失敗: {e}")

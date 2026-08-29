@@ -117,7 +117,7 @@ with gr.Blocks() as demo:
             model = gr.Dropdown(
                 choices=list(OPENAI_MODELS.keys()),
                 label="選擇 OpenAI 模型（用於文字優化）",
-                value="gpt-3.5-turbo"
+                value="gpt-5.6-luna"
             )
             
             gpt4o_model = gr.Dropdown(

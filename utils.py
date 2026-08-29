@@ -53,7 +53,7 @@ def calculate_tokens_and_cost(
     try:
         # 確保選擇的模型在支援列表中
         if model not in MODEL_PRICES:
-            model = "gpt-3.5-turbo"
+            model = "gpt-5.6-luna"
             
         # 獲取模型對應的編碼器
         encoding_name = "cl100k_base"  # 大多數新模型使用此編碼

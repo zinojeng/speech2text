@@ -333,7 +333,7 @@ class ADA2025BatchProcessor:
             
             summary_content = call_gemini_api(
                 prompt=prompt,
-                model="gemini-2.5-pro-preview-06-05",
+                model="gemini-3.7-flash",
                 api_key=self.google_key
             )
             
