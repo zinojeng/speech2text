@@ -1345,7 +1345,7 @@ if __name__ == "__main__":
     
     try:
         # 創建測試配置
-        from batch_audio_models import create_default_config
+        from ..core.models import create_default_config
         config = create_default_config()
         
         # 創建處理編排器

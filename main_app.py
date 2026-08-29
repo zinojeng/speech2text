@@ -768,7 +768,12 @@ def process_markdown_extraction(text, api_key, model, keyword_count):
 def render_content_input_tab():
     """Step 2 的「內容輸入」分頁：檔案上傳或直接輸入，轉成 Markdown。
 
-    結果寫進 session_state["markdown_text"]，不回傳。
+    結果寫進 session_state["markdown_text"]。
+
+    回傳 False 代表這次沒有產出可用內容（沒上傳檔案、或 Magika 壞掉）。
+    抽出成獨立函式前，這些地方是直接 return 掉整個 render_markitdown_tab，
+    連帶不會畫出「增強與分析」分頁；呼叫端要靠這個回傳值維持同樣行為，
+    否則那個分頁會顯示上一次殘留的內容。
     """
     st.subheader("文件及圖片上傳或直接輸入")
 
@@ -842,7 +847,7 @@ def render_content_input_tab():
                 process_btn_label = "🔄 分析圖片"
             else:
                 st.warning("請上傳文件或圖片進行處理")
-                return
+                return False
 
             # 整合處理按鈕
             if not openai_api_key:
@@ -897,7 +902,7 @@ def render_content_input_tab():
                                     3. 重新啟動應用程式
                                     """)
                                     # 跳過後續處理，直接返回
-                                    return
+                                    return False
 
                                 # 清理臨時檔案
                                 try:
@@ -1058,6 +1063,8 @@ def render_content_input_tab():
                     f"文字內容已處理！長度: {len(user_text)} 字元"
                 )
                 st.rerun()
+
+    return True
 
 
 
@@ -1322,10 +1329,14 @@ def render_markitdown_tab():
     
     # 內容輸入標籤頁
     with tab1:
-        render_content_input_tab()
+        has_content = render_content_input_tab()
+
     # 增強與分析標籤頁
-    with tab2:
-        render_enhancement_tab()
+    # 內容輸入若提前中止（沒上傳檔案 / Magika 失敗），原本會連這個分頁一起
+    # 不畫；照舊，免得顯示上一次殘留的 markdown_text。
+    if has_content:
+        with tab2:
+            render_enhancement_tab()
 
 def render_transcription_settings():
     """畫出側欄的「轉錄設定」分頁，回傳 main() 後續會用到的選擇結果。
@@ -1342,6 +1353,10 @@ def render_transcription_settings():
 
     # 顯示服務說明
     st.markdown(TRANSCRIPTION_SERVICE_INFO[transcription_service])
+
+    # 只有 OpenAI 分支會填這個欄位，但函式結尾一律回傳它，
+    # 所以先給預設值，否則選 Gemini 會 UnboundLocalError。
+    openai_api_key = st.session_state.get("openai_api_key", "")
 
     # 根據選擇的服務顯示對應的API金鑰輸入框
     if transcription_service == "OpenAI":

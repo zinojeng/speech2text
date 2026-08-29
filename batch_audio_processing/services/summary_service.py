@@ -1439,7 +1439,7 @@ if __name__ == "__main__":
     
     try:
         # 創建配置
-        from batch_audio_models import ProcessingConfig
+        from ..core.models import ProcessingConfig
         config = ProcessingConfig()
         
         # 創建摘要服務

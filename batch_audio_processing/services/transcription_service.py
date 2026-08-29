@@ -241,12 +241,11 @@ class TranscriptionService:
         """初始化轉錄服務"""
         self.config = config
         self.api_config = api_config or APIConfig()
-        # 使用內部的 ProgressTracker 類別
-        if progress_tracker is None:
-            self.progress_tracker = ProgressTracker(config.enable_detailed_logging)
-        else:
-            # 如果傳入了外部的 progress_tracker，我們需要適配
-            self.progress_tracker = ProgressTracker(config.enable_detailed_logging)
+        # 傳進來的 tracker 要用它，否則 orchestrator 的進度回呼收不到轉錄進度。
+        # （合併根目錄版本時把這裡一併帶進來了，原本兩個分支都新建一個。）
+        self.progress_tracker = progress_tracker or ProgressTracker(
+            config.enable_detailed_logging
+        )
         self.retry_config = RetryConfig(
             max_attempts=config.retry_attempts,
             base_delay=config.retry_delay,
@@ -786,7 +785,7 @@ if __name__ == "__main__":
     
     try:
         # 創建測試配置
-        from batch_audio_models import create_default_config
+        from ..core.models import create_default_config
         config = create_default_config()
         
         # 創建轉錄服務（帶進度回調）

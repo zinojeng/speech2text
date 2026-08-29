@@ -1459,7 +1459,7 @@ if __name__ == "__main__":
     generator = DocumentGenerator()
     
     # 創建測試資料
-    from batch_audio_models import FileInfo, TranscriptionResult, SummaryResult
+    from ..core.models import FileInfo, TranscriptionResult, SummaryResult
     
     # 測試檔案資訊
     test_file_info = FileInfo(
