@@ -32,6 +32,7 @@ load_dotenv()
 logging.basicConfig(level=logging.INFO)
 from llm_provider_kit import GeminiTextModel
 from llm_provider_kit import (
+    TRANSCRIBE_PRICING_PER_MINUTE,
     MODEL_TIERS,
     TIER_ORDER,
     tier_label,
@@ -226,7 +227,7 @@ def render_video_to_audio_tab():
     """)
     
     # 提示：無縫流程
-    st.info("💡 **無縫流程**：處理後的音檔可一鍵轉換至「Step 3: 語音轉文字」，無需下載後再上傳！")
+    st.info("💡 **無縫流程**：處理後的音檔可一鍵轉換至「轉錄」分頁，無需下載後再上傳！")
     
     # 檢查是否有 moviepy 或 ffmpeg
     has_moviepy = False
@@ -331,8 +332,8 @@ def render_video_to_audio_tab():
                         st.session_state["converted_audio_format"] = output_format
                         
                         # 成功提示與一鍵跳轉
-                        st.success("🎉 音檔已準備就緒！可直接在「Step 3: 語音轉文字」中使用，無需重新上傳。")
-                        st.markdown("👉 請切換到 **Step 3: 語音轉文字** 標籤頁，系統會自動載入此音檔。")
+                        st.success("🎉 音檔已準備就緒！可直接在「轉錄」分頁中使用，無需重新上傳。")
+                        st.markdown("👉 請切換到 **轉錄** 分頁，系統會自動載入此音檔。")
                         
                     else:
                         st.error(f"❌ 轉換失敗：{result}")
@@ -766,7 +767,7 @@ def process_markdown_extraction(text, api_key, model, keyword_count):
         return []
 
 def render_content_input_tab():
-    """Step 2 的「內容輸入」分頁：檔案上傳或直接輸入，轉成 Markdown。
+    """「文件與圖像處理」的內容輸入分頁：檔案上傳或直接輸入，轉成 Markdown。
 
     結果寫進 session_state["markdown_text"]。
 
@@ -1069,7 +1070,7 @@ def render_content_input_tab():
 
 
 def render_enhancement_tab():
-    """Step 2 的「增強與分析」分頁：關鍵詞提取、幻燈片增強、送往優化。"""
+    """「文件與圖像處理」的增強與分析分頁：關鍵詞提取、幻燈片增強、送往優化。"""
     st.subheader("文本增強與分析")
 
     # 是否有內容可以進行增強與分析
@@ -1285,11 +1286,11 @@ def render_enhancement_tab():
     elif enhancement_type == "傳送至優化功能":
         # 傳送至優化功能
         if st.button(
-            "📤 傳送至文字優化功能 (Step 3)",
+            "📤 傳送至「優化」分頁",
             use_container_width=True
         ):
             st.session_state.transcribed_text = st.session_state.markdown_text
-            st.success("內容已傳送至文字優化功能 (Step 3)！")
+            st.success("內容已傳送至「優化」分頁！")
             st.rerun()
 
     # 下載原始 Markdown 檔案
@@ -1305,7 +1306,7 @@ def render_enhancement_tab():
 
 def render_markitdown_tab():
     """渲染 MarkItDown 標籤頁"""
-    st.header("Step 1: 文件與圖像處理")
+    st.header("文件與圖像處理")
     
     # MarkItDown 服務說明
     st.markdown(MARKITDOWN_SERVICE_INFO)
@@ -1351,8 +1352,14 @@ def render_transcription_settings():
         help="選擇要使用的語音轉文字服務"
     )
 
-    # 顯示服務說明
-    st.markdown(TRANSCRIPTION_SERVICE_INFO[transcription_service])
+    # 這個函式現在畫在窄欄裡，h3 + 條列會擠成一團，壓成一段 caption
+    st.caption(
+        " · ".join(
+            line.strip().lstrip("#").lstrip("-").strip()
+            for line in TRANSCRIPTION_SERVICE_INFO[transcription_service].splitlines()
+            if line.strip()
+        )
+    )
 
     # 只有 OpenAI 分支會填這個欄位，但函式結尾一律回傳它，
     # 所以先給預設值，否則選 Gemini 會 UnboundLocalError。
@@ -1768,6 +1775,51 @@ def assemble_transcript(segment_results, gemini_segments,
     return full_transcript
 
 
+def estimate_run_cost(duration_seconds, model):
+    """依音訊長度估算這次轉錄的花費（USD）。
+
+    轉錄模型是按分鐘計價，價目表在 llm_provider_kit.TRANSCRIBE_PRICING_PER_MINUTE。
+    查不到價格就回 None，畫面上就不顯示成本，不要瞎猜一個數字。
+    """
+    rate = TRANSCRIBE_PRICING_PER_MINUTE.get(model)
+    if not rate or not duration_seconds:
+        return None
+    return (duration_seconds / 60.0) * rate
+
+
+def render_run_log(container):
+    """右欄：這一次轉錄實際發生了什麼。
+
+    分段耗時、被略過的碎片、重疊去重、講者時長、成本——這些數字程式本來
+    就算得出來，只是以前只寫進 log，畫面上看不到。做完一場 40 分鐘的演講，
+    想知道花了多少錢或哪一段特別慢，不該要去翻終端機。
+    """
+    log = st.session_state.get("run_log")
+    with container:
+        st.markdown("###### 執行記錄")
+        if not log:
+            st.caption("尚未執行轉錄")
+            return
+
+        for label, value in log.get("stages", []):
+            a, b = st.columns([3, 2])
+            a.caption(label)
+            b.caption(f"**{value}**")
+
+        if log.get("speakers"):
+            st.markdown("###### 講者")
+            for spk, dur in log["speakers"].items():
+                a, b = st.columns([3, 2])
+                a.caption(spk)
+                b.caption(f"**{dur}**")
+
+        if log.get("cost") is not None:
+            st.markdown("###### 成本")
+            a, b = st.columns([3, 2])
+            a.caption("本次合計")
+            b.caption(f"**US${log['cost']:.3f}**")
+
+
 def init_session_state():
     """把所有 session_state 的預設值集中在一處初始化。
 
@@ -1816,324 +1868,346 @@ def main():
     init_session_state()
 
     # 創建主要的功能標籤頁，添加步驟編號
-    tabs_titles = [
-        "🎬 Step 1: 影片轉音檔",
-        "📝 Step 2: 文件與圖像處理", 
-        "🎙️ Step 3: 語音轉文字", 
-        "✨ Step 4: 文字優化"
-    ]
-    main_tabs = st.tabs(tabs_titles)
-    
-    # 影片轉音檔標籤頁 (Step 1)
-    with main_tabs[0]:
-        render_video_to_audio_tab()
-    
-    # 文件轉換與關鍵詞標籤頁 (Step 2)
-    with main_tabs[1]:
-        render_markitdown_tab()
-    
-    # 語音轉文字標籤頁 (Step 3)
-    with main_tabs[2]:
-        with st.sidebar:
-            st.header("設定")
-            
-            # 分成兩個標籤頁：轉錄設定和優化設定
-            tab1, tab2 = st.tabs(["🎙️ 轉錄設定", "✨ 優化設定"])
-            
-            # 轉錄設定標籤頁
-            with tab1:
-                transcription_service, language_code, openai_api_key = (
-                    render_transcription_settings()
-                )
+    # 主線是兩步：轉錄 → 優化。
+    # 影片轉音檔是轉錄的前置（來源選擇裡就能做），文件與圖像處理跟音訊流程無關，
+    # 兩者都收進「工具」。先前把它們編成 Step 1/Step 2 夾在主線中間，
+    # 造成分頁標籤與頁面標題的編號互相矛盾。
+    main_tabs = st.tabs([
+        "🎙️ 轉錄",
+        "✨ 優化",
+        "🧰 工具",
+    ])
 
-            # 優化設定標籤頁
-            with tab2:
-                render_optimization_settings()
-            # 作者資訊
+    # ── 工具（不在主線上）──
+    with main_tabs[2]:
+        tool_a, tool_b = st.tabs(["🎬 影片轉音檔", "📝 文件與圖像處理"])
+        with tool_a:
+            render_video_to_audio_tab()
+        with tool_b:
+            render_markitdown_tab()
+
+    # ── 主線 1：轉錄 ──
+    with main_tabs[0]:
+        # 工作台：設定與結果同框，不再讓設定散落在側欄。
+        # 左欄放這一步真正會調的參數，右欄放做完之後才有意義的執行記錄與成本。
+        col_settings, col_main, col_log = st.columns([1.15, 2.5, 0.95], gap="medium")
+
+        with col_settings:
+            transcription_service, language_code, openai_api_key = (
+                render_transcription_settings()
+            )
+
+        with st.sidebar:
+            # 優化設定跟這一步無關，留在側欄
+            render_optimization_settings()
             st.markdown("---")
-            st.markdown("""
-            ### Created by
-            **Tseng Yao Hsien**  
-            Endocrinologist  
-            Tungs' Taichung MetroHarbor Hospital
-            """)
+            st.caption(
+                "Created by **Tseng Yao Hsien** · Endocrinologist\n\n"
+                "Tungs' Taichung MetroHarbor Hospital"
+            )
+
+        render_run_log(col_log)
 
         # 語音轉文字主要內容
-        st.header("Step 3: 語音轉文字")
+        with col_main:
+            st.header("語音轉文字")
         
-        # 檢查是否有來自 Step 1 的轉換音檔
-        has_converted_audio = (
-            "converted_audio_data" in st.session_state and 
-            st.session_state.get("converted_audio_data") is not None
-        )
-        
-        if has_converted_audio:
-            converted_name = st.session_state.get("converted_audio_name", "audio.mp3")
-            st.success(f"🎉 檢測到來自 Step 1 的音檔：**{converted_name}**")
-            
-            # 選擇音檔來源
-            audio_source = st.radio(
-                "選擇音檔來源",
-                options=["使用 Step 1 轉換的音檔", "上傳新的音檔"],
-                index=0,
-                horizontal=True
+            # 檢查是否有從「工具 → 影片轉音檔」帶過來的音檔
+            has_converted_audio = (
+                "converted_audio_data" in st.session_state and 
+                st.session_state.get("converted_audio_data") is not None
             )
+        
+            if has_converted_audio:
+                converted_name = st.session_state.get("converted_audio_name", "audio.mp3")
+                st.success(f"🎉 已帶入「工具 → 影片轉音檔」轉出的音檔：**{converted_name}**")
             
-            if audio_source == "使用 Step 1 轉換的音檔":
-                # 顯示預覽
-                st.audio(st.session_state["converted_audio_data"], 
-                        format=f"audio/{st.session_state.get('converted_audio_format', 'mp3')}")
-                uploaded_file = None  # 使用轉換的音檔，不需要上傳
-                use_converted = True
+                # 選擇音檔來源
+                audio_source = st.radio(
+                    "選擇音檔來源",
+                    options=["使用工具轉出的音檔", "上傳新的音檔"],
+                    index=0,
+                    horizontal=True
+                )
+            
+                if audio_source == "使用工具轉出的音檔":
+                    # 顯示預覽
+                    st.audio(st.session_state["converted_audio_data"], 
+                            format=f"audio/{st.session_state.get('converted_audio_format', 'mp3')}")
+                    uploaded_file = None  # 使用轉換的音檔，不需要上傳
+                    use_converted = True
+                else:
+                    # 上傳檔案
+                    uploaded_file = st.file_uploader(
+                        "上傳音訊檔案",
+                        type=["mp3", "wav", "ogg", "m4a"]
+                    )
+                    use_converted = False
             else:
+                use_converted = False
                 # 上傳檔案
                 uploaded_file = st.file_uploader(
                     "上傳音訊檔案",
                     type=["mp3", "wav", "ogg", "m4a"]
                 )
-                use_converted = False
-        else:
-            use_converted = False
-            # 上傳檔案
-            uploaded_file = st.file_uploader(
-                "上傳音訊檔案",
-                type=["mp3", "wav", "ogg", "m4a"]
-            )
         
-        # 只顯示轉錄按鈕
-        transcribe_button = st.button("🎙️ 轉錄音訊", use_container_width=True)
+            # 只顯示轉錄按鈕
+            transcribe_button = st.button("🎙️ 轉錄音訊", use_container_width=True)
         
-        # 顯示轉錄結果（如果有的話）
-        if st.session_state.transcribed_text:
-            st.subheader("轉錄結果")
+            # 顯示轉錄結果（如果有的話）
+            if st.session_state.transcribed_text:
+                st.subheader("轉錄結果")
             
-            # 根據輸出格式決定顯示方式
-            output_format = st.session_state.get("output_format", "純文字")
+                # 根據輸出格式決定顯示方式
+                output_format = st.session_state.get("output_format", "純文字")
             
-            if output_format == "Markdown":
-                # Markdown 格式使用 st.markdown 顯示
-                st.markdown(st.session_state.transcribed_text)
+                if output_format == "Markdown":
+                    # Markdown 格式使用 st.markdown 顯示
+                    st.markdown(st.session_state.transcribed_text)
                 
-                # 同時提供原始文字區域以便編輯
-                with st.expander("📝 檢視/編輯原始 Markdown 內容"):
-                    st.text_area(
-                        "Markdown 內容",
-                        st.session_state.transcribed_text,
-                        height=200,
-                        key="markdown_content"
-                    )
-            elif output_format == "SRT (含時間戳)":
-                # SRT 格式使用 code 區塊顯示
-                st.code(st.session_state.transcribed_text, language="srt")
+                    # 同時提供原始文字區域以便編輯
+                    with st.expander("📝 檢視/編輯原始 Markdown 內容"):
+                        st.text_area(
+                            "Markdown 內容",
+                            st.session_state.transcribed_text,
+                            height=200,
+                            key="markdown_content"
+                        )
+                elif output_format == "SRT (含時間戳)":
+                    # SRT 格式使用 code 區塊顯示
+                    st.code(st.session_state.transcribed_text, language="srt")
                 
-                # 同時提供文字區域以便編輯
-                with st.expander("📝 檢視/編輯 SRT 內容"):
+                    # 同時提供文字區域以便編輯
+                    with st.expander("📝 檢視/編輯 SRT 內容"):
+                        st.text_area(
+                            "SRT 內容",
+                            st.session_state.transcribed_text,
+                            height=200,
+                            key="srt_content"
+                        )
+                else:
+                    # 純文字格式
                     st.text_area(
-                        "SRT 內容",
+                        "轉錄文字",
                         st.session_state.transcribed_text,
-                        height=200,
-                        key="srt_content"
+                        height=200
                     )
-            else:
-                # 純文字格式
-                st.text_area(
-                    "轉錄文字",
-                    st.session_state.transcribed_text,
-                    height=200
+            
+                # 下載按鈕
+                st.markdown("### 下載選項")
+            
+                # 根據格式設定檔案副檔名和 MIME 類型
+                file_extensions = {
+                    "純文字": ("txt", "text/plain"),
+                    "Markdown": ("md", "text/markdown"),
+                    "SRT (含時間戳)": ("srt", "text/plain")
+                }
+            
+                ext, mime_type = file_extensions.get(output_format, ("txt", "text/plain"))
+            
+                st.download_button(
+                    label=f"📥 下載 {output_format} 檔案",
+                    data=st.session_state.transcribed_text,
+                    file_name=f"transcription.{ext}",
+                    mime=mime_type,
+                    help=f"下載 {output_format} 格式的轉錄檔案",
+                    use_container_width=True,
+                    key="download_transcription_formatted"
                 )
             
-            # 下載按鈕
-            st.markdown("### 下載選項")
-            
-            # 根據格式設定檔案副檔名和 MIME 類型
-            file_extensions = {
-                "純文字": ("txt", "text/plain"),
-                "Markdown": ("md", "text/markdown"),
-                "SRT (含時間戳)": ("srt", "text/plain")
-            }
-            
-            ext, mime_type = file_extensions.get(output_format, ("txt", "text/plain"))
-            
-            st.download_button(
-                label=f"📥 下載 {output_format} 檔案",
-                data=st.session_state.transcribed_text,
-                file_name=f"transcription.{ext}",
-                mime=mime_type,
-                help=f"下載 {output_format} 格式的轉錄檔案",
-                use_container_width=True,
-                key="download_transcription_formatted"
-            )
-            
-            # 只在有轉錄文字時顯示優化按鈕，添加 Step 3 指示
-            optimize_button = st.button("✨ 進入 Step 3: 優化文字", use_container_width=True)
-        else:
-            optimize_button = False
+                # 只在有轉錄文字時顯示前往「優化」的按鈕
+                optimize_button = st.button("✨ 進入「優化」分頁", use_container_width=True)
+            else:
+                optimize_button = False
         
-        # 處理轉錄 - 支援上傳檔案或來自 Step 1 的轉換音檔
-        should_transcribe = transcribe_button and (uploaded_file or (has_converted_audio and use_converted))
+            # 處理轉錄 - 支援上傳檔案或工具轉出的音檔
+            should_transcribe = transcribe_button and (uploaded_file or (has_converted_audio and use_converted))
         
-        if should_transcribe:
-            # 從session state獲取API金鑰
-            openai_api_key = st.session_state.get("openai_api_key", "")
+            if should_transcribe:
+                # 從session state獲取API金鑰
+                openai_api_key = st.session_state.get("openai_api_key", "")
             
-            if transcription_service == "OpenAI" and not openai_api_key:
-                st.error("請提供 OpenAI API 金鑰")
-                return
+                if transcription_service == "OpenAI" and not openai_api_key:
+                    st.error("請提供 OpenAI API 金鑰")
+                    return
                 
-            if transcription_service == "Gemini" and not (
-                st.session_state.get("gemini_transcribe_key")
-                or os.environ.get("GEMINI_API_KEY")
-                or os.environ.get("GOOGLE_API_KEY")
-            ):
-                st.error("請提供 Google API 金鑰（或設定 GEMINI_API_KEY 環境變數）")
-                return
+                if transcription_service == "Gemini" and not (
+                    st.session_state.get("gemini_transcribe_key")
+                    or os.environ.get("GEMINI_API_KEY")
+                    or os.environ.get("GOOGLE_API_KEY")
+                ):
+                    st.error("請提供 Google API 金鑰（或設定 GEMINI_API_KEY 環境變數）")
+                    return
 
             
-            try:
-                with st.spinner("處理中..."):
-                    # 初始化變數
-                    full_transcript = ""
+                try:
+                    with st.spinner("處理中..."):
+                        # 初始化變數
+                        full_transcript = ""
                     
-                    openai_client = None
-                    # 初始化 OpenAI 客戶端（如果需要）
-                    if transcription_service == "OpenAI":
-                        openai_client = OpenAI(api_key=openai_api_key)
+                        openai_client = None
+                        # 初始化 OpenAI 客戶端（如果需要）
+                        if transcription_service == "OpenAI":
+                            openai_client = OpenAI(api_key=openai_api_key)
                     
-                    # 處理音檔來源
-                    if has_converted_audio and use_converted:
-                        # 使用來自 Step 1 的轉換音檔
-                        audio_data = st.session_state["converted_audio_data"]
-                        audio_name = st.session_state.get("converted_audio_name", "audio.mp3")
-                        suffix = os.path.splitext(audio_name)[1]
+                        # 處理音檔來源
+                        if has_converted_audio and use_converted:
+                            # 使用工具轉出的音檔
+                            audio_data = st.session_state["converted_audio_data"]
+                            audio_name = st.session_state.get("converted_audio_name", "audio.mp3")
+                            suffix = os.path.splitext(audio_name)[1]
                         
-                        with tempfile.NamedTemporaryFile(
-                            delete=False,
-                            suffix=suffix
-                        ) as temp_file:
-                            temp_file.write(audio_data)
-                            temp_path = temp_file.name
+                            with tempfile.NamedTemporaryFile(
+                                delete=False,
+                                suffix=suffix
+                            ) as temp_file:
+                                temp_file.write(audio_data)
+                                temp_path = temp_file.name
                         
-                        st.info(f"📂 正在處理來自 Step 1 的音檔：{audio_name}")
-                    else:
-                        # 處理上傳的檔案
-                        suffix = os.path.splitext(uploaded_file.name)[1]
-                        with tempfile.NamedTemporaryFile(
-                            delete=False,
-                            suffix=suffix
-                        ) as temp_file:
-                            temp_file.write(uploaded_file.getvalue())
-                            temp_path = temp_file.name
+                            st.info(f"📂 正在處理工具轉出的音檔：{audio_name}")
+                        else:
+                            # 處理上傳的檔案
+                            suffix = os.path.splitext(uploaded_file.name)[1]
+                            with tempfile.NamedTemporaryFile(
+                                delete=False,
+                                suffix=suffix
+                            ) as temp_file:
+                                temp_file.write(uploaded_file.getvalue())
+                                temp_path = temp_file.name
                     
-                    try:
-                        # 檢查音訊長度
                         try:
-                            audio = AudioSegment.from_file(temp_path)
-                            duration_seconds = len(audio) / 1000
-                        except Exception as audio_error:
-                            # 如果無法使用 AudioSegment（通常是缺少 ffmpeg），直接處理整個檔案
-                            logger.warning(f"無法分析音訊長度（可能缺少 ffmpeg）: {audio_error}")
-                            st.warning("⚠️ 偵測到缺少 ffmpeg，將直接處理整個音訊檔案（可能較慢）")
-                            audio_segments = [temp_path]
-                            duration_seconds = 0  # 設為 0 以跳過分段邏輯
+                            # 檢查音訊長度
+                            try:
+                                audio = AudioSegment.from_file(temp_path)
+                                duration_seconds = len(audio) / 1000
+                            except Exception as audio_error:
+                                # 如果無法使用 AudioSegment（通常是缺少 ffmpeg），直接處理整個檔案
+                                logger.warning(f"無法分析音訊長度（可能缺少 ffmpeg）: {audio_error}")
+                                st.warning("⚠️ 偵測到缺少 ffmpeg，將直接處理整個音訊檔案（可能較慢）")
+                                audio_segments = [temp_path]
+                                duration_seconds = 0  # 設為 0 以跳過分段邏輯
                         
-                        if duration_seconds > 600:  # 如果音訊超過 10 分鐘
-                            st.info("音訊較長，將採用固定時間分段處理...")
-                            logger.info(
-                                "音訊檔案長度: %.2f 秒，開始固定時間分段處理",
-                                duration_seconds
-                            )
-                            
-                            # 設定分段參數
-                            MAX_SEGMENT_DURATION = 600  # 最大分段時長（秒）
-                            OVERLAP_DURATION = 30      # 重疊時長（秒）
-                            segments = []
-                            start_time = 0.0
-                            
-                            # 進行固定時間分段
-                            while start_time < duration_seconds:
-                                end_time = min(
-                                    start_time + MAX_SEGMENT_DURATION, 
+                            if duration_seconds > 600:  # 如果音訊超過 10 分鐘
+                                st.info("音訊較長，將採用固定時間分段處理...")
+                                logger.info(
+                                    "音訊檔案長度: %.2f 秒，開始固定時間分段處理",
                                     duration_seconds
                                 )
-                                
-                                # 如果不是第一段，則從前一段結尾提前開始
-                                if start_time > 0:
-                                    segment_start = start_time - OVERLAP_DURATION
-                                else:
-                                    segment_start = start_time
-                                
-                                # 擷取音訊片段
-                                segment = audio[
-                                    int(segment_start * 1000):int(end_time * 1000)
-                                ]
-                                segment_path = f"{temp_path}_segment_{len(segments)}.mp3"
-                                segment.export(segment_path, format="mp3")
-                                logger.info(
-                                    "儲存分段 %d，時間範圍：%.2f - %.2f 秒",
-                                    len(segments) + 1,
-                                    segment_start,
-                                    end_time
-                                )
-                                segments.append(segment_path)
-                                
-                                # 更新開始時間
-                                start_time = end_time
                             
-                            audio_segments = segments
-                            logger.info(
-                                "完成分段處理，共 %d 個分段",
-                                len(segments)
-                            )
+                                # 設定分段參數
+                                MAX_SEGMENT_DURATION = 600  # 最大分段時長（秒）
+                                OVERLAP_DURATION = 30      # 重疊時長（秒）
+                                segments = []
+                                start_time = 0.0
+                            
+                                # 進行固定時間分段
+                                while start_time < duration_seconds:
+                                    end_time = min(
+                                        start_time + MAX_SEGMENT_DURATION, 
+                                        duration_seconds
+                                    )
+                                
+                                    # 如果不是第一段，則從前一段結尾提前開始
+                                    if start_time > 0:
+                                        segment_start = start_time - OVERLAP_DURATION
+                                    else:
+                                        segment_start = start_time
+                                
+                                    # 擷取音訊片段
+                                    segment = audio[
+                                        int(segment_start * 1000):int(end_time * 1000)
+                                    ]
+                                    segment_path = f"{temp_path}_segment_{len(segments)}.mp3"
+                                    segment.export(segment_path, format="mp3")
+                                    logger.info(
+                                        "儲存分段 %d，時間範圍：%.2f - %.2f 秒",
+                                        len(segments) + 1,
+                                        segment_start,
+                                        end_time
+                                    )
+                                    segments.append(segment_path)
+                                
+                                    # 更新開始時間
+                                    start_time = end_time
+                            
+                                audio_segments = segments
+                                logger.info(
+                                    "完成分段處理，共 %d 個分段",
+                                    len(segments)
+                                )
+                            else:
+                                audio_segments = [temp_path]
+                                logger.info("音訊長度適中，不需分段處理")
+                        
+                            progress_bar = st.progress(0)
+                            SEGMENT_SECONDS = 600
+                            OVERLAP_SECONDS = 30
+                        
+                            segment_results, gemini_segments = transcribe_segments(
+                                audio_segments, transcription_service, language_code,
+                                openai_client, temp_path, progress_bar,
+                                SEGMENT_SECONDS, OVERLAP_SECONDS)
+                        
+                            # 增加調試日誌
+                            logger.info(f"共處理 {len(segment_results)} 個分段結果")
+                        
+                            full_transcript = assemble_transcript(
+                                segment_results, gemini_segments,
+                                SEGMENT_SECONDS, OVERLAP_SECONDS)
+
+                            # 把這次的執行狀況留給右欄顯示
+                            speakers = {}
+                            for seg in gemini_segments:
+                                spk = seg.get("speaker")
+                                if spk:
+                                    speakers[spk] = speakers.get(spk, 0) + (seg["end"] - seg["start"])
+                            st.session_state["run_log"] = {
+                                "stages": [
+                                    ("模型", st.session_state.get("openai_model", "—")),
+                                    ("分段數", f"{len(audio_segments)}"),
+                                    ("有時間戳的段落", f"{len(gemini_segments)}"),
+                                    ("輸出字數", f"{len(full_transcript):,}"),
+                                ],
+                                "speakers": {
+                                    k: f"{int(v // 60):02d}:{int(v % 60):02d}"
+                                    for k, v in sorted(speakers.items())
+                                },
+                                "cost": estimate_run_cost(
+                                    duration_seconds,
+                                    st.session_state.get("openai_model", ""),
+                                ),
+                            }
+                        
+                            # 添加調試日誌
+                            logger.info(f"轉錄結果長度: {len(full_transcript) if full_transcript else 0}")
+                            logger.info("完成所有分段的轉錄與合併")
+                    
+                        except Exception as e:
+                            st.error(f"處理失敗：{str(e)}")
+                            logger.error(f"處理失敗：{str(e)}")
+                            full_transcript = ""  # 確保異常時重置變數
+                    
+                        # 處理轉錄結果
+                        if full_transcript and full_transcript.strip():
+                            st.session_state.transcribed_text = full_transcript
+                            st.success("轉錄完成！")
+                            logger.info("轉錄結果已儲存至 session_state")
+                            st.rerun()  # 使用新的 rerun 方法
                         else:
-                            audio_segments = [temp_path]
-                            logger.info("音訊長度適中，不需分段處理")
+                            st.error("轉錄失敗或結果為空")
+                            logger.error("轉錄失敗：結果為空或無效")
                         
-                        progress_bar = st.progress(0)
-                        SEGMENT_SECONDS = 600
-                        OVERLAP_SECONDS = 30
-                        
-                        segment_results, gemini_segments = transcribe_segments(
-                            audio_segments, transcription_service, language_code,
-                            openai_client, temp_path, progress_bar,
-                            SEGMENT_SECONDS, OVERLAP_SECONDS)
-                        
-                        # 增加調試日誌
-                        logger.info(f"共處理 {len(segment_results)} 個分段結果")
-                        
-                        full_transcript = assemble_transcript(
-                            segment_results, gemini_segments,
-                            SEGMENT_SECONDS, OVERLAP_SECONDS)
-                        
-                        # 添加調試日誌
-                        logger.info(f"轉錄結果長度: {len(full_transcript) if full_transcript else 0}")
-                        logger.info("完成所有分段的轉錄與合併")
-                    
-                    except Exception as e:
-                        st.error(f"處理失敗：{str(e)}")
-                        logger.error(f"處理失敗：{str(e)}")
-                        full_transcript = ""  # 確保異常時重置變數
-                    
-                    # 處理轉錄結果
-                    if full_transcript and full_transcript.strip():
-                        st.session_state.transcribed_text = full_transcript
-                        st.success("轉錄完成！")
-                        logger.info("轉錄結果已儲存至 session_state")
-                        st.rerun()  # 使用新的 rerun 方法
-                    else:
-                        st.error("轉錄失敗或結果為空")
-                        logger.error("轉錄失敗：結果為空或無效")
-                        
-            except Exception as e:
-                st.error(f"處理失敗：{str(e)}")
-                logger.error(f"處理失敗：{str(e)}")
+                except Exception as e:
+                    st.error(f"處理失敗：{str(e)}")
+                    logger.error(f"處理失敗：{str(e)}")
         
-        # 優化標籤頁 (Step 4)
-        with main_tabs[3]:
-            st.header("Step 4: 文字優化")
-        
+    # ── 主線 2：優化 ──
+    with main_tabs[1]:
+            st.header("文字優化")
+
             # 如果沒有待優化的文字，顯示提示
             if not st.session_state.transcribed_text:
-                st.info("請先在 Step 2 轉換文件或 Step 3 轉錄音訊，然後再執行優化")
+                st.info("先在「轉錄」分頁轉出逐字稿，或用「工具 → 文件與圖像處理」帶入文字")
                 return
 
             # 顯示優化結果（如果有的話）
