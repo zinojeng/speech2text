@@ -116,9 +116,9 @@ def convert_to_traditional_chinese(
     """將文字轉換為繁體中文"""
     client = OpenAI(api_key=api_key)
     
+    # GPT-5.x 只接受預設 temperature，送 0.1 會回 400
     response = client.chat.completions.create(
         model=model,
-        temperature=0.1,  # 使用較低的溫度以確保準確轉換
         messages=[
             {
                 "role": "system",

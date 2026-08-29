@@ -454,7 +454,8 @@ def generate_srt_from_json(json_responses, segment_duration=600, overlap_duratio
             else:
                 # 如果沒有詳細時間戳，使用文字內容估算
                 text = response.text if hasattr(response, 'text') else str(response)
-                fallback_srt = generate_srt_format_fallback([text], segment_offset, segment_duration)
+                fallback_srt = generate_srt_format_fallback(
+                    [text], segment_offset, segment_duration, start_index=subtitle_index)
                 if fallback_srt:
                     srt_content.extend(fallback_srt.split('\n'))
                     subtitle_index += text.count('.') + 1
@@ -463,19 +464,24 @@ def generate_srt_from_json(json_responses, segment_duration=600, overlap_duratio
             # 如果 JSON 解析失敗，回退到基本模式
             logger.warning(f"JSON 解析失敗，使用回退模式: {e}")
             text = response.text if hasattr(response, 'text') else str(response)
-            fallback_srt = generate_srt_format_fallback([text], segment_offset, segment_duration)
+            fallback_srt = generate_srt_format_fallback(
+                [text], segment_offset, segment_duration, start_index=subtitle_index)
             if fallback_srt:
                 srt_content.extend(fallback_srt.split('\n'))
                 subtitle_index += text.count('.') + 1
     
     return "\n".join(srt_content)
 
-def generate_srt_format_fallback(text_segments, segment_offset=0, segment_duration=600):
+def generate_srt_format_fallback(text_segments, segment_offset=0, segment_duration=600,
+                                 start_index=1):
     """
     回退模式：將文字分段轉換為 SRT 字幕格式
+
+    start_index: 字幕編號起始值。多個 chunk 分別呼叫時必須接續下去，
+    否則整份 SRT 會出現重複的編號，播放器會判定格式錯誤。
     """
     srt_content = []
-    subtitle_index = 1
+    subtitle_index = start_index
     
     for text in text_segments:
         if not text or not text.strip():
@@ -1337,8 +1343,6 @@ def main():
     # 設定預設API金鑰
     if "openai_api_key" not in st.session_state:
         st.session_state["openai_api_key"] = ""
-    if "elevenlabs_api_key" not in st.session_state:
-        st.session_state["elevenlabs_api_key"] = ""
     if "gemini_api_key" not in st.session_state:
         st.session_state["gemini_api_key"] = ""
     if "use_llm" not in st.session_state:
@@ -1569,8 +1573,9 @@ def main():
                     help="長逐字稿選經濟版可省很多；需要細膩改寫再往上選",
                     key="optimization_tier"
                 )
+                # 注意：widget 的 key 已經把值寫進 session_state，
+                # 再對同名 key 指派會讓 Streamlit 拋 StreamlitAPIException。
                 selected_model = MODEL_TIERS[optimization_service][tier]
-                st.session_state["optimization_tier"] = tier
                 st.session_state["optimization_model"] = selected_model
                 if optimization_service == "Gemini":
                     st.session_state["gemini_model"] = selected_model
@@ -1721,7 +1726,6 @@ def main():
         if should_transcribe:
             # 從session state獲取API金鑰
             openai_api_key = st.session_state.get("openai_api_key", "")
-            elevenlabs_api_key = st.session_state.get("elevenlabs_api_key", "")
             
             if transcription_service == "OpenAI" and not openai_api_key:
                 st.error("請提供 OpenAI API 金鑰")
@@ -1850,6 +1854,10 @@ def main():
                                       st.session_state.get("gemini_keywords", "").split(",")
                                       if k.strip()]
                                 diarize = st.session_state.get("gemini_diarization", True)
+                                # custom_vocabulary 與講者標記、詞級時間戳三者互斥。
+                                # 使用者關掉講者標記又填了關鍵字，代表他要的是關鍵字；
+                                # 這時必須一併關掉時間戳，否則關鍵字會被默默丟掉。
+                                want_timestamps = diarize or not kw
                                 transcriber = GeminiTranscriber(
                                     st.session_state.get("gemini_transcribe_key") or None
                                 )
@@ -1858,7 +1866,7 @@ def main():
                                     language=language_code,
                                     keywords=kw or None,
                                     diarization=diarize,
-                                    word_timestamps=True,
+                                    word_timestamps=want_timestamps,
                                 )
                                 # 段落時間是相對於這個切片，補上整檔的位移
                                 offset = max(
@@ -1866,6 +1874,10 @@ def main():
                                     i * SEGMENT_SECONDS - OVERLAP_SECONDS if i > 0 else 0
                                 )
                                 for seg in gem.get("segments", []):
+                                    # 除了第一段，每段開頭的 OVERLAP_SECONDS 與上一段
+                                    # 尾巴重疊，直接收下會讓字幕重複一次。
+                                    if i > 0 and seg["end"] <= OVERLAP_SECONDS:
+                                        continue
                                     gemini_segments.append({
                                         "start": seg["start"] + offset,
                                         "end": seg["end"] + offset,
