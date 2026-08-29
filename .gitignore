@@ -5,6 +5,9 @@ __pycache__/
 ._*
 venv/
 venv_new/
+node_modules/
+.wrangler/
+.dev.vars*
 
 # 備份檔案
 *.bak
@@ -27,4 +30,4 @@ temp/
 
 # 測試檔案 (可選擇性加入版本控制)
 *_test.py
-test_*.py 
+test_*.py
