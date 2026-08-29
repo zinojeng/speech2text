@@ -84,6 +84,39 @@ GEMINI_REFINE_CHEAP = "gemini-3.5-flash-lite"
 
 
 # ==========================================================================
+# 成本／品質分級：給 UI 讓使用者自己選，不要在程式裡替他決定
+# ==========================================================================
+TIER_ECONOMY = "經濟"
+TIER_STANDARD = "標準"
+TIER_QUALITY = "高品質"
+
+MODEL_TIERS = {
+    "OpenAI": {
+        TIER_ECONOMY: OPENAI_REFINE_CHEAP,
+        TIER_STANDARD: OPENAI_REFINE,
+        TIER_QUALITY: OPENAI_REASONING,
+    },
+    "Gemini": {
+        TIER_ECONOMY: GEMINI_REFINE_CHEAP,
+        TIER_STANDARD: GEMINI_REFINE,
+        TIER_QUALITY: GEMINI_REASONING,
+    },
+}
+
+TIER_ORDER = (TIER_ECONOMY, TIER_STANDARD, TIER_QUALITY)
+
+
+def tier_label(provider: str, tier: str) -> str:
+    """UI 上顯示的分級說明，含模型名與每 1M tokens 價格。"""
+    model = MODEL_TIERS[provider][tier]
+    price = MODEL_PRICING.get(model)
+    if not price:
+        return f"{tier}（{model}）"
+    return (f"{tier}（{model}）— 輸入 ${price['input']}/M、"
+            f"輸出 ${price['output']}/M")
+
+
+# ==========================================================================
 # 價格表（USD per 1M tokens；轉錄為 USD per minute）
 #
 # 價格會變，並且會因為 context 長度分級。這裡記的是短 context 的標準價，
@@ -97,8 +130,10 @@ MODEL_PRICING = {
     "gpt-5.6-terra": {"input": 2.00, "cached_input": 0.20, "output": 12.00},
     "gpt-5.6-luna":  {"input": 0.20, "cached_input": 0.02, "output": 1.20},
     # Gemini 文字
-    "gemini-3.7-flash":      {"input": 1.50, "cached_input": 0.00, "output": 7.50},
-    "gemini-3.5-flash-lite": {"input": 0.30, "cached_input": 0.00, "output": 2.50},
+    # 3.7 Flash 目前是促銷價（2026-12-31 前 $0.75/$3.75，之後回到 $1.50/$7.50）
+    "gemini-3.7-flash":       {"input": 0.75, "cached_input": 0.00, "output": 3.75},
+    "gemini-3.5-flash-lite":  {"input": 0.30, "cached_input": 0.00, "output": 2.50},
+    "gemini-3.1-pro-preview": {"input": 2.00, "cached_input": 0.00, "output": 12.00},
 }
 
 # 轉錄模型以「每分鐘音訊」計價
@@ -163,6 +198,12 @@ __all__ = [
     "GEMINI_REFINE",
     "GEMINI_REFINE_CHEAP",
     "MODEL_PRICING",
+    "MODEL_TIERS",
+    "TIER_ECONOMY",
+    "TIER_ORDER",
+    "TIER_QUALITY",
+    "TIER_STANDARD",
+    "tier_label",
     "OPENAI_REFINE",
     "OPENAI_REFINE_CHEAP",
     "TRANSCRIBE_PRICING_PER_MINUTE",

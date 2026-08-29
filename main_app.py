@@ -14,8 +14,6 @@ from openai import OpenAI
 from pydub import AudioSegment
 
 # 本地模組導入
-from whisper_stt import get_model_description, transcribe_audio_whisper
-from elevenlabs_stt import transcribe_audio_elevenlabs
 from transcript_refiner import refine_transcript
 from markitdown_utils import (
     convert_file_to_markdown,
@@ -34,6 +32,9 @@ load_dotenv()
 logging.basicConfig(level=logging.INFO)
 from gemini_client import GeminiTextModel
 from model_config import (
+    MODEL_TIERS,
+    TIER_ORDER,
+    tier_label,
     GEMINI_REFINE,
     GEMINI_REFINE_CHEAP,
     GEMINI_TRANSCRIBE,
@@ -82,18 +83,6 @@ USD_TO_NTD = 31.5
 
 # 轉錄服務說明
 TRANSCRIPTION_SERVICE_INFO = {
-    "Whisper": """
-    ### Whisper 模型
-    - 開源的語音轉文字模型
-    - 支援多種語言
-    - 可離線使用
-    """,
-    "ElevenLabs": """
-    ### ElevenLabs 模型
-    - 商業級語音轉文字服務
-    - 支援 99 種語言
-    - 提供說話者辨識功能
-    """,
     "OpenAI": f"""
     ### OpenAI（{OPENAI_TRANSCRIBE}）
     - 文字準確度最好，自動語言偵測
@@ -561,13 +550,15 @@ def calculate_cost(input_tokens, output_tokens, model_name, is_cached=False):
     """
     return total_cost_usd, total_cost_ntd, details
 
-def refine_transcript_gemini(text, api_key, temperature=0.5, context=""):
+def refine_transcript_gemini(text, api_key, context=""):
     """使用 Gemini 模型優化文字
+
+    Gemini 3.x 不接受 temperature / top_p / top_k（會回 400），所以沒有
+    創意程度參數；要調整風格請透過 context 提示。
 
     Args:
         text (str): 要優化的文字
         api_key (str): Gemini API 金鑰
-        temperature (float): 創意程度 (0.0-1.0)
         context (str): 上下文提示
 
     Returns:
@@ -680,12 +671,7 @@ def refine_transcript_gemini(text, api_key, temperature=0.5, context=""):
         - 潛在風險與因應措施
         """
         
-        response = model.generate_content(
-            prompt,
-            generation_config={
-                'temperature': temperature
-            }
-        )
+        response = model.generate_content(prompt)
         
         # 解析回應
         response_text = response.text
@@ -1394,7 +1380,7 @@ def main():
                 # 選擇轉錄服務
                 transcription_service = st.selectbox(
                     "選擇轉錄服務",
-                    options=["OpenAI", "Gemini", "Whisper", "ElevenLabs"],
+                    options=["OpenAI", "Gemini"],
                     index=0,
                     help="選擇要使用的語音轉文字服務"
                 )
@@ -1415,19 +1401,11 @@ def main():
                     st.session_state["openai_api_key"] = openai_api_key
                     
                     # 允許用戶選擇轉錄模型
-                    # 這個分支整段走 OpenAI client，只能列 OpenAI 的模型。
-                    # Gemini 轉錄（真實時間戳＋講者標記）走的是另一套
-                    # interactions API，目前只在 CLI 提供：
-                    #   python gpt4o_transcribe.py <audio> --model gemini-3.5-transcribe
-                    transcribe_model = st.radio(
-                        "選擇轉錄模型",
-                        options=[OPENAI_TRANSCRIBE],
-                        index=0,
-                        help=(
-                            f"{OPENAI_TRANSCRIBE}：文字準確度最好，但不回傳時間戳，"
-                            f"SRT 時間軸為估算值。需要真實時間戳與講者標記請用 CLI 的 "
-                            f"{GEMINI_TRANSCRIBE}。"
-                        )
+                    # 服務選擇已經決定了模型，這裡不再重複一個單選項的選單
+                    transcribe_model = OPENAI_TRANSCRIBE
+                    st.caption(
+                        f"轉錄模型：{OPENAI_TRANSCRIBE}"
+                        "（需要真實時間戳或講者標記請改選 Gemini 服務）"
                     )
                     st.session_state["openai_model"] = transcribe_model
                     
@@ -1550,59 +1528,6 @@ def main():
                     )
                     st.session_state["output_format"] = output_format
 
-                elif transcription_service == "ElevenLabs":
-                    # ElevenLabs API 金鑰
-                    elevenlabs_api_key = st.text_input(
-                        "ElevenLabs API 金鑰",
-                        type="password",
-                        help="用於 ElevenLabs 語音轉文字服務"
-                    )
-                    # 儲存到 session state
-                    st.session_state["elevenlabs_api_key"] = elevenlabs_api_key
-                
-                # Whisper 相關設定
-                elif transcription_service == "Whisper":
-                    whisper_model = st.selectbox(
-                        "選擇 Whisper 模型",
-                        options=["tiny", "base", "small", "medium", "large"],
-                        index=2
-                    )
-                    st.session_state["whisper_model"] = whisper_model
-                    st.caption(get_model_description(whisper_model))
-                    
-                    # 語言設定
-                    language_mode = st.radio(
-                        "語言設定",
-                        options=["自動偵測", "指定語言", "混合語言"],
-                        help="選擇音訊的語言處理模式"
-                    )
-                    
-                    if language_mode == "指定語言":
-                        languages = {
-                            "中文 (繁體/簡體)": "zh",
-                            "英文": "en",
-                            "日文": "ja",
-                            "韓文": "ko",
-                            "其他": "custom"
-                        }
-                        
-                        selected_lang = st.selectbox(
-                            "選擇語言",
-                            options=list(languages.keys())
-                        )
-                        
-                        if selected_lang == "其他":
-                            custom_lang = st.text_input(
-                                "輸入語言代碼",
-                                placeholder="例如：fr 代表法文",
-                                help="請輸入 ISO 639-1 語言代碼"
-                            )
-                            language_code = custom_lang if custom_lang else None
-                        else:
-                            language_code = languages[selected_lang]
-                    else:
-                        language_code = None
-            
             # 優化設定標籤頁
             with tab2:
                 # 選擇優化服務
@@ -1619,46 +1544,37 @@ def main():
                 
                 # 根據選擇的服務顯示對應的API金鑰輸入框
                 if optimization_service == "Gemini":
-                    # Gemini API 金鑰
                     gemini_api_key = st.text_input(
                         "Google API 金鑰",
                         type="password",
                         value=st.session_state.get("gemini_api_key", ""),
                         help="用於 Gemini 模型優化文字"
                     )
-                    # 儲存到 session state
                     st.session_state["gemini_api_key"] = gemini_api_key
-                    
-                    # 添加模型選擇選項
-                    gemini_model = st.radio(
-                        "選擇 Gemini 模型",
-                        options=[
-                            GEMINI_REFINE,
-                            GEMINI_REFINE_CHEAP,
-                            GEMINI_REASONING,
-                        ],
-                        index=0,
-                        help="Flash 平衡品質與成本，Flash-Lite 最便宜，Pro 推理最強"
-                    )
-                    st.session_state["gemini_model"] = gemini_model
-                    
-                    # 顯示 Gemini 模型資訊
-                    st.info(f"使用 {gemini_model} 模型進行優化")
                 else:  # OpenAI
-                    # OpenAI API 金鑰
                     openai_api_key = st.text_input(
                         "OpenAI API 金鑰",
                         type="password",
                         value=st.session_state.get("openai_api_key", ""),
                         help="用於 OpenAI 模型優化文字"
                     )
-                    # 儲存到 session state
                     st.session_state["openai_api_key"] = openai_api_key
-                    
-                    # 顯示模型資訊
-                    st.info(f"使用 {OPENAI_REFINE_CHEAP} 進行優化，速度快、成本低")
-                    st.session_state["optimization_model"] = OPENAI_REFINE_CHEAP
-                
+
+                # 成本／品質分級：讓使用者自己決定，不要替他選
+                tier = st.radio(
+                    "成本／品質分級",
+                    options=list(TIER_ORDER),
+                    index=1,  # 預設「標準」
+                    format_func=lambda t: tier_label(optimization_service, t),
+                    help="長逐字稿選經濟版可省很多；需要細膩改寫再往上選",
+                    key="optimization_tier"
+                )
+                selected_model = MODEL_TIERS[optimization_service][tier]
+                st.session_state["optimization_tier"] = tier
+                st.session_state["optimization_model"] = selected_model
+                if optimization_service == "Gemini":
+                    st.session_state["gemini_model"] = selected_model
+
                 # 優化提示 (增加文字優化效果)
                 st.markdown("### 優化提示設定")
                 st.markdown("""
@@ -1675,16 +1591,9 @@ def main():
                 # 儲存到 session state
                 st.session_state["optimization_prompt"] = optimization_prompt
                 
-                # 優化設定
-                temperature = st.slider(
-                    "創意程度",
-                    0.0,
-                    1.0,
-                    0.5,
-                    help="較高的值會產生更有創意的結果，較低的值會產生更保守的結果"
-                )
-                # 儲存到 session state
-                st.session_state["temperature"] = temperature
+                # 「創意程度」滑桿已移除：GPT-5.x 只接受預設 temperature（送其他值
+                # 會回 400），Gemini 3.x 則完全不接受這個參數。留著只是誤導使用者，
+                # 因為不論怎麼拉都不會影響輸出。要調整風格請用上面的「優化提示」。
             
             # 作者資訊
             st.markdown("---")
@@ -1826,9 +1735,6 @@ def main():
                 st.error("請提供 Google API 金鑰（或設定 GEMINI_API_KEY 環境變數）")
                 return
 
-            if transcription_service == "ElevenLabs" and not elevenlabs_api_key:
-                st.error("請提供 ElevenLabs API 金鑰")
-                return
             
             try:
                 with st.spinner("處理中..."):
@@ -1936,14 +1842,7 @@ def main():
                         OVERLAP_SECONDS = 30
                         
                         for i, segment_path in enumerate(audio_segments):
-                            if transcription_service == "Whisper":
-                                result = transcribe_audio_whisper(
-                                    segment_path,
-                                    model_name=whisper_model,
-                                    language=language_code,
-                                    initial_prompt=st.session_state["transcription_prompt"]
-                                )
-                            elif transcription_service == "Gemini":
+                            if transcription_service == "Gemini":
                                 # Gemini 走 interactions 轉錄 API，回傳真實時間戳
                                 from gemini_transcribe import GeminiTranscriber
 
@@ -1975,13 +1874,6 @@ def main():
                                 result = gem.get("text", "")
                                 segment_results.append(result)
 
-                            elif transcription_service == "ElevenLabs":
-                                result = transcribe_audio_elevenlabs(
-                                    api_key=elevenlabs_api_key,
-                                    file_path=segment_path,
-                                    language_code="zho",  # 指定中文
-                                    diarize=False  # 取消啟用說話者辨識
-                                )
                             elif transcription_service == "OpenAI":
                                 MAX_RETRIES = 3
                                 retry_count = 0
@@ -2224,7 +2116,6 @@ def main():
                             openai_api_key = st.session_state.get("openai_api_key", "")
                             gemini_api_key = st.session_state.get("gemini_api_key", "")
                             optimization_service = st.session_state.get("optimization_service", "OpenAI")
-                            temperature = st.session_state.get("temperature", 0.5)
                             
                             if optimization_service == "OpenAI":
                                 if not openai_api_key:
@@ -2245,7 +2136,6 @@ def main():
                                 refined = refine_transcript_gemini(
                                     text=st.session_state.transcribed_text,
                                     api_key=gemini_api_key,
-                                    temperature=temperature,
                                     context=st.session_state["optimization_prompt"]
                                 )
                             
@@ -2327,7 +2217,7 @@ def main():
             3. **文字優化**：優化轉錄文字，製作會議記錄或講稿
             
             ### 技術支援
-            * 音訊轉文字：OpenAI 模型、Whisper 模型
+            * 音訊轉文字：OpenAI (gpt-transcribe)、Gemini (gemini-3.5-transcribe)
             * 文字優化：GPT-4o 系列模型、Gemini 2.5 Pro
             * 文件轉換：MarkItDown 套件
             
