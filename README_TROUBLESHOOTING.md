@@ -40,7 +40,7 @@ pip install magika --no-cache-dir
 #### 方法三：測試修復結果
 執行測試腳本確認功能正常：
 ```bash
-python test_pdf_conversion.py
+python -c "from markitdown_utils import convert_file_to_markdown"  # PDF 轉換自我檢查
 ```
 
 ### 預防措施
