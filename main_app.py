@@ -30,8 +30,8 @@ load_dotenv()
 
 # 設定日誌
 logging.basicConfig(level=logging.INFO)
-from gemini_client import GeminiTextModel
-from model_config import (
+from llm_provider_kit import GeminiTextModel
+from llm_provider_kit import (
     MODEL_TIERS,
     TIER_ORDER,
     tier_label,
@@ -1576,7 +1576,7 @@ def transcribe_segments(audio_segments, transcription_service, language_code,
     for i, segment_path in enumerate(audio_segments):
         if transcription_service == "Gemini":
             # Gemini 走 interactions 轉錄 API，回傳真實時間戳
-            from gemini_transcribe import GeminiTranscriber
+            from llm_provider_kit import GeminiTranscriber
 
             kw = [k.strip() for k in
                   st.session_state.get("gemini_keywords", "").split(",")

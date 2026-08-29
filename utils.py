@@ -4,7 +4,7 @@ from pydub import AudioSegment
 import math
 import logging
 import tiktoken
-from model_config import (
+from llm_provider_kit import (
     MODEL_PRICING,
     OPENAI_REASONING,
     OPENAI_REFINE,

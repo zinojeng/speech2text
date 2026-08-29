@@ -1,0 +1,21 @@
+{
+  "transcription_model": "gpt-4o-mini-transcribe",
+  "transcription_language": "zh",
+  "summary_model": "gemini-2.5-pro-preview-06-05",
+  "output_format": "markdown",
+  "enable_combined_output": false,
+  "enable_srt_support": true,
+  "max_workers": 2,
+  "enable_parallel": true,
+  "retry_attempts": 3,
+  "retry_delay": 2.0,
+  "exponential_backoff": true,
+  "max_file_size_mb": 25,
+  "segment_duration_seconds": 300,
+  "auto_split_large_files": true,
+  "api_rate_limit_delay": 1.0,
+  "api_timeout_seconds": 300,
+  "enable_detailed_logging": true,
+  "log_level": "INFO",
+  "generate_processing_report": true
+}

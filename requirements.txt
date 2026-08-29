@@ -3,7 +3,6 @@ openai>=1.12.0
 gradio>=4.19.2
 python-dotenv>=1.0.1
 requests>=2.31.0
-google-genai>=2.13.0
 markitdown[all]>=0.1.1
 tiktoken>=0.5.1
 
@@ -30,3 +29,4 @@ tqdm>=4.66.2
 
 # Document processing
 python-docx>=0.8.11 
+llm-provider-kit @ https://github.com/zinojeng/llm-provider-kit/archive/refs/heads/main.tar.gz  # 共用模型設定與 OpenAI/Gemini 呼叫層

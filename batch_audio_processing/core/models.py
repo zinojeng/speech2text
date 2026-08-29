@@ -20,9 +20,7 @@ from pathlib import Path
 from enum import Enum
 import sys
 
-# 讓子目錄的模組也能 import 專案根目錄的 model_config
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from model_config import (
+from llm_provider_kit import (
     GEMINI_REFINE,
     GEMINI_REFINE_CHEAP,
     GEMINI_TRANSCRIBE,

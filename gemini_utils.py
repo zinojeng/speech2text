@@ -4,8 +4,8 @@ Gemini API utilities
 
 import os
 from typing import Optional
-from gemini_client import GeminiTextModel
-from model_config import GEMINI_REFINE_CHEAP
+from llm_provider_kit import GeminiTextModel
+from llm_provider_kit import GEMINI_REFINE_CHEAP
 
 def call_gemini_api(prompt: str, model: str = GEMINI_REFINE_CHEAP, api_key: Optional[str] = None) -> Optional[str]:
     """

@@ -36,8 +36,8 @@ import time
 from utils import split_large_audio, check_file_size
 from audio2text.gpt4o_stt import transcribe_audio_gpt4o
 from pydub import AudioSegment
-from gemini_client import GeminiTextModel
-from model_config import GEMINI_REFINE
+from llm_provider_kit import GeminiTextModel
+from llm_provider_kit import GEMINI_REFINE
 
 # 載入環境變數
 load_dotenv()

@@ -23,8 +23,8 @@ from docx import Document
 from docx.enum.text import WD_PARAGRAPH_ALIGNMENT
 from datetime import datetime
 from dotenv import load_dotenv
-from gemini_client import GeminiTextModel
-from model_config import GEMINI_REFINE
+from llm_provider_kit import GeminiTextModel
+from llm_provider_kit import GEMINI_REFINE
 
 # 載入環境變數
 load_dotenv()

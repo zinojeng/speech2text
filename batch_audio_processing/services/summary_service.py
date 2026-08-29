@@ -29,7 +29,7 @@ from ..core.models import (
 )
 from gemini_utils import call_gemini_api
 from markitdown_utils import convert_file_to_markdown
-from model_config import GEMINI_NOTES
+from llm_provider_kit import GEMINI_NOTES
 
 # 設定日誌
 logger = logging.getLogger(__name__)

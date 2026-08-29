@@ -1,0 +1,192 @@
+{
+  "error_summary": {
+    "total_errors": 0,
+    "statistics": {
+      "total_errors": 0,
+      "errors_by_type": {},
+      "errors_by_severity": {},
+      "errors_by_file": {},
+      "retry_statistics": {},
+      "recovery_success_rate": 0.0
+    },
+    "recent_errors": []
+  },
+  "progress_summary": {
+    "batch_id": "integrated_test",
+    "batch_progress": {
+      "batch_id": "integrated_test",
+      "total_tasks": 2,
+      "completed_tasks": 0,
+      "failed_tasks": 0,
+      "skipped_tasks": 0,
+      "pending_tasks": 2,
+      "progress_percentage": 0.0,
+      "completion_rate": 0.0,
+      "success_rate": 0.0,
+      "start_time": "2025-07-23T12:44:45.905234",
+      "end_time": "2025-07-23T12:44:47.932523",
+      "duration_seconds": 2.027289,
+      "estimated_remaining_seconds": null
+    },
+    "total_tasks": 0,
+    "tasks_by_status": {},
+    "tasks_by_stage": {},
+    "active_tasks": []
+  },
+  "log_report": {
+    "report_time": "2025-07-23T12:44:47.932650",
+    "system_name": "integrated_test",
+    "metrics": {
+      "monitoring_period": {
+        "start_time": "2025-07-23T12:44:45.889937",
+        "end_time": "2025-07-23T12:44:45.889937",
+        "duration_minutes": 0.0
+      },
+      "system_metrics_summary": {
+        "cpu_usage": {
+          "avg": 0.0,
+          "max": 0.0,
+          "min": 0.0
+        },
+        "memory_usage": {
+          "avg": 0.0,
+          "max": 0.0,
+          "min": 0.0
+        },
+        "disk_usage": {
+          "avg": 0.0,
+          "max": 0.0,
+          "min": 0.0
+        }
+      },
+      "processing_metrics": {
+        "total_files": 2,
+        "processed_files": 2,
+        "failed_files": 0,
+        "skipped_files": 0,
+        "total_processing_time": 2.0,
+        "average_processing_time": 1.0,
+        "transcription_time": 0.0,
+        "summary_time": 0.0,
+        "document_generation_time": 0.0,
+        "success_rate": 100.0,
+        "completion_rate": 100.0
+      },
+      "timers": {
+        "file_discovery": 0.014943361282348633,
+        "process_._BM-OR01-1 - CGM in Action—Smarter Choices, Better Balance, Lasting Impact.mp3": 1.0139310359954834,
+        "process_BM-OR01-1 - CGM in Action—Smarter Choices, Better Balance, Lasting Impact.mp3": 1.009819746017456
+      }
+    },
+    "recent_logs": [
+      {
+        "timestamp": "2025-07-23T12:44:45.890091",
+        "level": "INFO",
+        "message": "LoggingSystem 初始化完成",
+        "module": "",
+        "function": null,
+        "line_number": 0,
+        "context": {
+          "name": "integrated_test",
+          "log_dir": "logs"
+        },
+        "exception_info": null
+      },
+      {
+        "timestamp": "2025-07-23T12:44:45.890160",
+        "level": "INFO",
+        "message": "開始階段: file_discovery",
+        "module": "",
+        "function": null,
+        "line_number": 0,
+        "context": {
+          "stage": "file_discovery"
+        },
+        "exception_info": null
+      },
+      {
+        "timestamp": "2025-07-23T12:44:45.905229",
+        "level": "INFO",
+        "message": "階段完成: file_discovery (1.00秒)",
+        "module": "",
+        "function": null,
+        "line_number": 0,
+        "context": {
+          "stage": "file_discovery",
+          "duration": 1.0,
+          "files_found": 4
+        },
+        "exception_info": null
+      },
+      {
+        "timestamp": "2025-07-23T12:44:45.905398",
+        "level": "INFO",
+        "message": "開始批次處理，總檔案數: 2",
+        "module": "",
+        "function": null,
+        "line_number": 0,
+        "context": {},
+        "exception_info": null
+      },
+      {
+        "timestamp": "2025-07-23T12:44:45.905483",
+        "level": "INFO",
+        "message": "開始處理檔案: /Volumes/WD_BLACK/國際年會/ADA2025/CGM in Action—Smarter Choices, Better Balance, Lasting Impact/._BM-OR01-1 - CGM in Action—Smarter Choices, Better Balance, Lasting Impact.mp3",
+        "module": "",
+        "function": null,
+        "line_number": 0,
+        "context": {
+          "file_path": "/Volumes/WD_BLACK/國際年會/ADA2025/CGM in Action—Smarter Choices, Better Balance, Lasting Impact/._BM-OR01-1 - CGM in Action—Smarter Choices, Better Balance, Lasting Impact.mp3"
+        },
+        "exception_info": null
+      },
+      {
+        "timestamp": "2025-07-23T12:44:46.920798",
+        "level": "INFO",
+        "message": "檔案處理成功: /Volumes/WD_BLACK/國際年會/ADA2025/CGM in Action—Smarter Choices, Better Balance, Lasting Impact/._BM-OR01-1 - CGM in Action—Smarter Choices, Better Balance, Lasting Impact.mp3 (1.00秒)",
+        "module": "",
+        "function": null,
+        "line_number": 0,
+        "context": {
+          "file_path": "/Volumes/WD_BLACK/國際年會/ADA2025/CGM in Action—Smarter Choices, Better Balance, Lasting Impact/._BM-OR01-1 - CGM in Action—Smarter Choices, Better Balance, Lasting Impact.mp3",
+          "success": true,
+          "processing_time": 1.0,
+          "stage": "complete"
+        },
+        "exception_info": null
+      },
+      {
+        "timestamp": "2025-07-23T12:44:46.921685",
+        "level": "INFO",
+        "message": "開始處理檔案: /Volumes/WD_BLACK/國際年會/ADA2025/CGM in Action—Smarter Choices, Better Balance, Lasting Impact/BM-OR01-1 - CGM in Action—Smarter Choices, Better Balance, Lasting Impact.mp3",
+        "module": "",
+        "function": null,
+        "line_number": 0,
+        "context": {
+          "file_path": "/Volumes/WD_BLACK/國際年會/ADA2025/CGM in Action—Smarter Choices, Better Balance, Lasting Impact/BM-OR01-1 - CGM in Action—Smarter Choices, Better Balance, Lasting Impact.mp3"
+        },
+        "exception_info": null
+      },
+      {
+        "timestamp": "2025-07-23T12:44:47.932502",
+        "level": "INFO",
+        "message": "檔案處理成功: /Volumes/WD_BLACK/國際年會/ADA2025/CGM in Action—Smarter Choices, Better Balance, Lasting Impact/BM-OR01-1 - CGM in Action—Smarter Choices, Better Balance, Lasting Impact.mp3 (1.00秒)",
+        "module": "",
+        "function": null,
+        "line_number": 0,
+        "context": {
+          "file_path": "/Volumes/WD_BLACK/國際年會/ADA2025/CGM in Action—Smarter Choices, Better Balance, Lasting Impact/BM-OR01-1 - CGM in Action—Smarter Choices, Better Balance, Lasting Impact.mp3",
+          "success": true,
+          "processing_time": 1.0,
+          "stage": "complete"
+        },
+        "exception_info": null
+      }
+    ],
+    "log_summary": {
+      "total_logs": 8,
+      "error_count": 0,
+      "warning_count": 0
+    }
+  }
+}
