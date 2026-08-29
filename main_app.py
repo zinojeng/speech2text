@@ -1632,6 +1632,8 @@ def transcribe_segments(audio_segments, transcription_service, language_code,
                     "start": seg["start"] + offset,
                     "end": seg["end"] + offset,
                     "text": seg["text"],
+                    # 講者要一起帶著走，右欄的講者時長靠這個欄位
+                    "speaker": seg.get("speaker"),
                 })
             result = gem.get("text", "")
             segment_results.append(result)
@@ -2161,9 +2163,16 @@ def main():
                                 spk = seg.get("speaker")
                                 if spk:
                                     speakers[spk] = speakers.get(spk, 0) + (seg["end"] - seg["start"])
+                            # 走 Gemini 時 openai_model 不是這次用的模型，
+                            # 直接拿它去查價會算成 OpenAI 的費率。
+                            used_model = (
+                                GEMINI_TRANSCRIBE
+                                if transcription_service == "Gemini"
+                                else st.session_state.get("openai_model", OPENAI_TRANSCRIBE)
+                            )
                             st.session_state["run_log"] = {
                                 "stages": [
-                                    ("模型", st.session_state.get("openai_model", "—")),
+                                    ("模型", used_model),
                                     ("分段數", f"{len(audio_segments)}"),
                                     ("有時間戳的段落", f"{len(gemini_segments)}"),
                                     ("輸出字數", f"{len(full_transcript):,}"),
@@ -2172,10 +2181,7 @@ def main():
                                     k: f"{int(v // 60):02d}:{int(v % 60):02d}"
                                     for k, v in sorted(speakers.items())
                                 },
-                                "cost": estimate_run_cost(
-                                    duration_seconds,
-                                    st.session_state.get("openai_model", ""),
-                                ),
+                                "cost": estimate_run_cost(duration_seconds, used_model),
                             }
                         
                             # 添加調試日誌
