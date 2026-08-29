@@ -4,10 +4,8 @@ import streamlit as st
 
 # 定義可用的 OpenAI 模型
 OPENAI_MODELS = {
-    "gpt-5.6-terra": "GPT-4o",
-    "gpt-5.6-luna": "GPT-4o-mini",
-    "gpt-5.6-luna": "gpt-5.6-luna",
-    "gpt-5.6-luna": "gpt-5.6-luna"
+    "gpt-5.6-terra": "GPT-5.6 Terra（品質優先）",
+    "gpt-5.6-luna": "GPT-5.6 Luna（省錢／量大）",
 }
 
 def refine_transcript(
@@ -52,9 +50,9 @@ def refine_transcript(
             ]
         }
         
-        # 只有 gpt-4o 和 gpt-4o-mini 支援 temperature
-        if model.startswith("gpt-5.6-terra"):
-            params["temperature"] = temperature
+        # GPT-5.x 只接受預設的 temperature（送 0.5 會回 400），所以不傳。
+        # 參數保留在簽章中以維持呼叫端相容。
+        _ = temperature
         
         # 第一步：修正並轉換為繁體中文
         correction_response = client.chat.completions.create(**params)

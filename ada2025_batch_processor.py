@@ -14,6 +14,7 @@ from pathlib import Path
 from datetime import datetime
 from typing import List, Dict, Optional, Tuple
 import subprocess
+from model_config import GEMINI_NOTES
 
 # 設定日誌
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -473,7 +474,7 @@ class ADA2025BatchProcessor:
             with open(summary_file, 'w', encoding='utf-8') as f:
                 f.write(f"# {file_name} - 詳細會議筆記\n\n")
                 f.write(f"**生成時間**: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
-                f.write(f"**使用模型**: gemini-2.5-pro-preview-06-05\n")
+                f.write(f"**使用模型**: {GEMINI_NOTES}\n")
                 f.write(f"**筆記版本**: 增強版詳細筆記\n")
                 f.write("\n" + "="*50 + "\n\n")
                 f.write(summary)

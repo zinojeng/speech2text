@@ -1381,13 +1381,18 @@ def main():
                     st.session_state["openai_api_key"] = openai_api_key
                     
                     # 允許用戶選擇轉錄模型
+                    # 這個分支整段走 OpenAI client，只能列 OpenAI 的模型。
+                    # Gemini 轉錄（真實時間戳＋講者標記）走的是另一套
+                    # interactions API，目前只在 CLI 提供：
+                    #   python gpt4o_transcribe.py <audio> --model gemini-3.5-transcribe
                     transcribe_model = st.radio(
                         "選擇轉錄模型",
-                        options=[OPENAI_TRANSCRIBE, GEMINI_TRANSCRIBE],
-                        index=1,  # 預設使用mini版本
+                        options=[OPENAI_TRANSCRIBE],
+                        index=0,
                         help=(
-                            f"{OPENAI_TRANSCRIBE}：文字準確度最好，但時間軸為估算值；"
-                            f"{GEMINI_TRANSCRIBE}：真實詞級時間戳＋講者標記，做字幕用這個"
+                            f"{OPENAI_TRANSCRIBE}：文字準確度最好，但不回傳時間戳，"
+                            f"SRT 時間軸為估算值。需要真實時間戳與講者標記請用 CLI 的 "
+                            f"{GEMINI_TRANSCRIBE}。"
                         )
                     )
                     st.session_state["openai_model"] = transcribe_model
@@ -1855,7 +1860,6 @@ def main():
                                                     language=language_code,
                                                     response_format=api_format,
                                                     prompt=st.session_state["transcription_prompt"],
-                                                    temperature=0.3
                                                 )
                                             )
                                             # 成功則添加結果
@@ -2076,7 +2080,6 @@ def main():
                                     raw_text=st.session_state.transcribed_text,
                                     api_key=openai_api_key,
                                     model=st.session_state["optimization_model"],
-                                    temperature=temperature,
                                     context=st.session_state["optimization_prompt"]
                                 )
                             else:  # Gemini

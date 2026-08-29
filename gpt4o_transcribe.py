@@ -78,7 +78,7 @@ def main():
                     "錯誤：OpenAI 的轉錄模型不回傳時間戳，無法直接產生 SRT。\n"
                     "      請改用 gemini-3.5-transcribe（詞級時間戳＋講者標記）。"
                 )
-                return
+                sys.exit(1)
 
             transcript = client.audio.transcriptions.create(
                 model=args.model,
@@ -98,6 +98,7 @@ def main():
                 
     except Exception as e:
         print(f"轉錄失敗: {e}")
+        sys.exit(1)
 
 
 if __name__ == "__main__":

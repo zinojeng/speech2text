@@ -22,16 +22,21 @@ import sys
 
 # 讓子目錄的模組也能 import 專案根目錄的 model_config
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from model_config import GEMINI_REFINE, GEMINI_REFINE_CHEAP
+from model_config import (
+    GEMINI_REFINE,
+    GEMINI_REFINE_CHEAP,
+    GEMINI_TRANSCRIBE,
+    OPENAI_TRANSCRIBE,
+)
 
 # 設定日誌
 logger = logging.getLogger(__name__)
 
 
 class TranscriptionModel(Enum):
-    """支援的轉錄模型"""
-    GPT4O_TRANSCRIBE = "gpt-transcribe"
-    GPT4O_MINI_TRANSCRIBE = "gpt-transcribe"
+    """支援的轉錄模型（實際 id 見 model_config.py）"""
+    OPENAI = OPENAI_TRANSCRIBE
+    GEMINI = GEMINI_TRANSCRIBE
 
 
 class OutputFormat(Enum):
@@ -57,7 +62,7 @@ class ProcessingConfig:
     Requirements: 7.1, 7.2, 7.5
     """
     # 轉錄設定
-    transcription_model: TranscriptionModel = TranscriptionModel.GPT4O_MINI_TRANSCRIBE
+    transcription_model: TranscriptionModel = TranscriptionModel.OPENAI
     transcription_language: str = "zh"
     
     # 摘要設定

@@ -321,7 +321,6 @@ def extract_keywords(markdown_text: str, api_key: str, model: str = "gpt-5.6-lun
                     "content": markdown_text
                 }
             ],
-            temperature=0.3
         )
         
         keywords_text = response.choices[0].message.content

@@ -230,13 +230,13 @@ get_transcribe_model() {
         fi
     else
         echo -e "${BLUE}🤖 選擇轉錄模型:${NC}"
-        echo "  1) gpt-transcribe (預設，更經濟)"
-        echo "  2) gpt-transcribe (更高品質，較昂貴)"
+        echo "  1) gpt-transcribe (預設，文字準確度最好)"
+        echo "  2) gemini-3.5-transcribe (真實詞級時間戳＋講者標記)"
         read -p "請選擇 (1-2，預設為1): " choice
         
         case $choice in
             2)
-                MODEL="gpt-transcribe"
+                MODEL="gemini-3.5-transcribe"
                 ;;
             *)
                 MODEL="gpt-transcribe"

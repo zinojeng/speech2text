@@ -5,7 +5,7 @@
 注意：此檔案已被棄用。主要的 srt_merge_processor.py 現已包含所有改進功能：
 - 自動移除時間戳記
 - 正確整合投影片內容
-- 使用 gemini-2.5-pro-preview-06-05 模型
+- 使用 model_config.GEMINI_NOTES 指定的模型
 
 請直接使用 srt_merge_processor.py 或 interactive_merge.sh
 """

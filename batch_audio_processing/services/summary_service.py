@@ -29,6 +29,7 @@ from ..core.models import (
 )
 from gemini_utils import call_gemini_api
 from markitdown_utils import convert_file_to_markdown
+from model_config import GEMINI_NOTES
 
 # 設定日誌
 logger = logging.getLogger(__name__)
@@ -49,7 +50,7 @@ class SummaryService:
     """
     摘要服務基礎類別
     
-    整合現有的 gemini_utils.py，使用 gemini-2.5-pro-preview-06-05 模型，
+    整合現有的 gemini_utils.py，使用 model_config.GEMINI_NOTES 指定的模型，
     實作 ADA 2025 會議專用系統提示詞。
     
     Requirements: 3.1, 3.2, 3.3

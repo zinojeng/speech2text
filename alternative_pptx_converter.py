@@ -151,7 +151,6 @@ def analyze_pptx_with_vision(pptx_path: str, api_key: str, model: str = "gpt-5.6
                             }
                         ],
                         max_completion_tokens=1000,
-                        temperature=0.3
                     )
                     
                     result = response.choices[0].message.content
