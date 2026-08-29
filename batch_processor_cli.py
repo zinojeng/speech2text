@@ -301,7 +301,7 @@ Examples:
     
     parser.add_argument('input', help='Audio file or directory path')
     parser.add_argument('--model', default='gpt-transcribe',
-                        choices=['gpt-transcribe', 'gemini-3.5-transcribe', 'whisper-1'],
+                        choices=['gpt-transcribe', 'gemini-3.5-transcribe'],
                         help='Transcription model (default: gpt-transcribe)')
     parser.add_argument('--format', default='text',
                         choices=['text', 'srt', 'markdown'],

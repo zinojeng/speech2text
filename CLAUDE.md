@@ -189,9 +189,12 @@ Transcription: pick by what you need, not by price — the two cost nearly the s
 |---|---|---|---|
 | `gpt-transcribe` | best | estimated | no |
 | `gemini-3.5-transcribe` | middle | real, word-level | yes |
-| `whisper-1` | worst | real, segment | no |
 
-Fallbacks: local Whisper on quota exhaustion, ElevenLabs for premium features.
+`whisper-1` was removed: its Mandarin accuracy was the worst of the three and
+`gemini-3.5-transcribe` covers real timestamps better.
+
+Fallbacks: local Whisper (`whisper_stt.py`, a different thing from the retired
+`whisper-1` API model) on quota exhaustion, ElevenLabs for premium features.
 
 ### Model gotchas
 

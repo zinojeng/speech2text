@@ -43,7 +43,7 @@ def main():
         "--model",
         type=str,
         default="gpt-transcribe",
-        help="選擇模型: gpt-transcribe, gemini-3.5-transcribe, whisper-1"
+        help="選擇模型: gpt-transcribe, gemini-3.5-transcribe"
     )
     parser.add_argument(
         "--language",

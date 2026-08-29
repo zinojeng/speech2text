@@ -285,7 +285,7 @@ with col1:
     
     model = st.selectbox(
         "Select transcription model:",
-        ["gpt-transcribe", "gemini-3.5-transcribe", "whisper-1"],
+        ["gpt-transcribe", "gemini-3.5-transcribe"],
         index=0
     )
     

@@ -81,7 +81,7 @@ class BatchAudioProcessor:
         初始化處理器
         
         Args:
-            model: 使用的轉錄模型 (gpt-transcribe、gemini-3.5-transcribe 或 whisper-1)
+            model: 使用的轉錄模型 (gpt-transcribe 或 gemini-3.5-transcribe)
             output_format: 輸出格式 (text, markdown, srt)
         """
         self.openai_client = None
@@ -624,7 +624,7 @@ def main():
     try:
         # 檢查命令行參數中是否指定模型
         model = "gpt-transcribe"  # 預設使用 mini 版本
-        if len(sys.argv) > 2 and sys.argv[2] in ["gpt-transcribe", "gemini-3.5-transcribe", "whisper-1"]:
+        if len(sys.argv) > 2 and sys.argv[2] in ["gpt-transcribe", "gemini-3.5-transcribe"]:
             model = sys.argv[2]
         
         print(f"🤖 使用轉錄模型: {model}")

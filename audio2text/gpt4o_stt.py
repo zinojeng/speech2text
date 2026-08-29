@@ -12,7 +12,7 @@ def transcribe_audio_gpt4o(file_path, api_key, model="gpt-transcribe", language=
     Args:
         file_path: 音頻檔案路徑
         api_key: OpenAI API 金鑰
-        model: 模型名稱 (gpt-transcribe、gemini-3.5-transcribe 或 whisper-1)
+        model: 模型名稱 (gpt-transcribe 或 gemini-3.5-transcribe)
         language: 語言代碼 (如 'zh', 'en', 'ja' 等)
         output_format: 輸出格式 ('text', 'srt', 'markdown')
     

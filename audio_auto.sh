@@ -224,7 +224,7 @@ get_folder_path() {
 get_transcribe_model() {
     if [ "$1" != "" ]; then
         MODEL="$1"
-        if [ "$MODEL" != "gpt-transcribe" ] && [ "$MODEL" != "gemini-3.5-transcribe" ] && [ "$MODEL" != "whisper-1" ]; then
+        if [ "$MODEL" != "gpt-transcribe" ] && [ "$MODEL" != "gemini-3.5-transcribe" ]; then
             echo -e "${YELLOW}⚠️  無效的模型名稱，使用預設模型: gpt-transcribe${NC}"
             MODEL="gpt-transcribe"
         fi

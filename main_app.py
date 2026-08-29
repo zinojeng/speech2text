@@ -42,7 +42,7 @@ from model_config import (
     OPENAI_REASONING,
     OPENAI_REFINE,
     OPENAI_REFINE_CHEAP,
-    OPENAI_TIMESTAMP_TRANSCRIBE,
+    TIMESTAMP_TRANSCRIBE,
     OPENAI_TRANSCRIBE,
     OPENAI_VISION,
 )
@@ -99,7 +99,7 @@ TRANSCRIPTION_SERVICE_INFO = {
     - {OPENAI_TRANSCRIBE}：文字準確度最好，自動語言偵測
     - 支援 keywords 專有名詞提示（藥名、縮寫）
     - 不回傳時間戳，SRT 時間軸為估算值
-    - 需要真實時間戳請改用 {GEMINI_TRANSCRIBE} 或 {OPENAI_TIMESTAMP_TRANSCRIBE}
+    - 需要真實時間戳請改用 {GEMINI_TRANSCRIBE}
     """
 }
 
@@ -1383,12 +1383,11 @@ def main():
                     # 允許用戶選擇轉錄模型
                     transcribe_model = st.radio(
                         "選擇轉錄模型",
-                        options=[OPENAI_TRANSCRIBE, GEMINI_TRANSCRIBE, OPENAI_TIMESTAMP_TRANSCRIBE],
+                        options=[OPENAI_TRANSCRIBE, GEMINI_TRANSCRIBE],
                         index=1,  # 預設使用mini版本
                         help=(
-                            f"{OPENAI_TRANSCRIBE}：文字準確度最好，但不回傳時間戳；"
-                            f"{GEMINI_TRANSCRIBE}：唯一同時有講者標記與詞級時間戳；"
-                            f"{OPENAI_TIMESTAMP_TRANSCRIBE}：OpenAI 唯一有真時間戳，中文較差"
+                            f"{OPENAI_TRANSCRIBE}：文字準確度最好，但時間軸為估算值；"
+                            f"{GEMINI_TRANSCRIBE}：真實詞級時間戳＋講者標記，做字幕用這個"
                         )
                     )
                     st.session_state["openai_model"] = transcribe_model
