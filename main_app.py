@@ -94,12 +94,18 @@ TRANSCRIPTION_SERVICE_INFO = {
     - 支援 99 種語言
     - 提供說話者辨識功能
     """,
-    "OpenAI 2025 New": f"""
-    ### OpenAI 現行轉錄模型
-    - {OPENAI_TRANSCRIBE}：文字準確度最好，自動語言偵測
-    - 支援 keywords 專有名詞提示（藥名、縮寫）
-    - 不回傳時間戳，SRT 時間軸為估算值
-    - 需要真實時間戳請改用 {GEMINI_TRANSCRIBE}
+    "OpenAI": f"""
+    ### OpenAI（{OPENAI_TRANSCRIBE}）
+    - 文字準確度最好，自動語言偵測
+    - **不回傳時間戳**，SRT 時間軸只能依字數估算
+    - 適合：逐字稿、專有名詞多的內容
+    """,
+    "Gemini": f"""
+    ### Gemini（{GEMINI_TRANSCRIBE}）
+    - **真實詞級時間戳**，SRT 時間軸準確
+    - **講者標記**，最多 8 位（標成 spk:0、spk:1 …）
+    - 單次上限 30 分鐘（開時間戳／講者標記時）
+    - 適合：字幕、多講者會議
     """
 }
 
@@ -111,13 +117,11 @@ OPTIMIZATION_SERVICE_INFO = {
     - 支援多種語言
     - 可自訂優化程度
     """,
-    "Gemini": """
-    ### Google Gemini 2.5 Pro (實驗性)
-    - 最新的 Google AI 模型
-    - 更強的上下文理解能力
-    - 更自然的語言處理
-    - 支援多語言優化
-    - 實驗性功能，持續改進中
+    "Gemini": f"""
+    ### Google Gemini（{GEMINI_REFINE}）
+    - 長上下文理解能力強
+    - 適合整場演講的逐字稿潤飾
+    - 成本低於同級 OpenAI 模型
     """
 }
 
@@ -373,6 +377,36 @@ def encode_image_to_base64(image_path: str) -> str:
     except Exception as e:
         logger.error(f"圖片編碼失敗: {str(e)}")
         return ""
+
+def generate_srt_from_segments(segments):
+    """由帶真實時間戳的段落產生 SRT。
+
+    segments: [{'start': 秒, 'end': 秒, 'text': str}, ...]，時間已是整檔絕對值。
+    只有 Gemini 的轉錄後端會提供這種資料；OpenAI 那條路徑沒有時間戳，
+    走的是 generate_srt_from_json / 估算的退路。
+    """
+    def fmt(seconds):
+        h = int(seconds // 3600)
+        m = int((seconds % 3600) // 60)
+        sec = int(seconds % 60)
+        ms = int(round((seconds - int(seconds)) * 1000))
+        return f"{h:02d}:{m:02d}:{sec:02d},{ms:03d}"
+
+    usable = [
+        seg for seg in segments
+        if seg.get("start") is not None and seg.get("end") is not None
+        and seg["end"] > seg["start"] and str(seg.get("text", "")).strip()
+    ]
+    usable.sort(key=lambda seg: (seg["start"], seg["end"]))
+
+    lines = []
+    for idx, seg in enumerate(usable, start=1):
+        lines.append(str(idx))
+        lines.append(f"{fmt(seg['start'])} --> {fmt(seg['end'])}")
+        lines.append(str(seg["text"]).strip())
+        lines.append("")
+    return "\n".join(lines)
+
 
 def generate_srt_from_json(json_responses, segment_duration=600, overlap_duration=30):
     """
@@ -1360,7 +1394,7 @@ def main():
                 # 選擇轉錄服務
                 transcription_service = st.selectbox(
                     "選擇轉錄服務",
-                    options=["OpenAI 2025 New", "Whisper", "ElevenLabs"],
+                    options=["OpenAI", "Gemini", "Whisper", "ElevenLabs"],
                     index=0,
                     help="選擇要使用的語音轉文字服務"
                 )
@@ -1369,7 +1403,7 @@ def main():
                 st.markdown(TRANSCRIPTION_SERVICE_INFO[transcription_service])
                 
                 # 根據選擇的服務顯示對應的API金鑰輸入框
-                if transcription_service == "OpenAI 2025 New":
+                if transcription_service == "OpenAI":
                     # OpenAI API 金鑰
                     openai_api_key = st.text_input(
                         "OpenAI API 金鑰",
@@ -1442,6 +1476,80 @@ def main():
                     )
                     st.session_state["output_format"] = output_format
                 
+                elif transcription_service == "Gemini":
+                    gemini_transcribe_key = st.text_input(
+                        "Google API 金鑰",
+                        type="password",
+                        value=os.environ.get("GEMINI_API_KEY", ""),
+                        help="用於 Gemini 語音轉文字服務"
+                    )
+                    st.session_state["gemini_transcribe_key"] = gemini_transcribe_key
+
+                    st.session_state["gemini_diarization"] = st.checkbox(
+                        "啟用講者標記",
+                        value=True,
+                        help="標出不同講者（最多 8 位）。關閉可改用專有名詞提示。"
+                    )
+
+                    # custom_vocabulary 與講者標記／時間戳互斥（API 限制）
+                    if not st.session_state["gemini_diarization"]:
+                        st.session_state["gemini_keywords"] = st.text_input(
+                            "專有名詞提示（逗號分隔）",
+                            help="例如 HbA1c,GLP-1,dapagliflozin。與講者標記互斥。"
+                        )
+                    else:
+                        st.session_state["gemini_keywords"] = ""
+                        st.caption("講者標記開啟時無法同時使用專有名詞提示（API 限制）")
+
+                    # 語言設定
+                    language_mode = st.radio(
+                        "語言設定",
+                        key="gemini_language_mode",
+                        options=["自動偵測", "指定語言"],
+                        help="選擇音訊的語言處理模式"
+                    )
+                    
+                    # 語言設定
+                    if language_mode == "指定語言":
+                        languages = {
+                            "中文 (繁體/簡體)": "zh",
+                            "英文": "en",
+                            "日文": "ja",
+                            "韓文": "ko",
+                            "其他": "custom"
+                        }
+                        
+                        selected_lang = st.selectbox(
+                            "選擇語言",
+                            options=list(languages.keys()),
+                            key="gemini_selected_lang"
+                        )
+                        
+                        if selected_lang == "其他":
+                            custom_lang = st.text_input(
+                                "輸入語言代碼",
+                                placeholder="例如：fr 代表法文",
+                                help="請輸入 ISO 639-1 語言代碼",
+                                key="gemini_custom_lang"
+                            )
+                            language_code = custom_lang if custom_lang else None
+                        else:
+                            language_code = languages[selected_lang]
+                    else:
+                        language_code = None
+                    
+                    # 輸出格式設定
+                    output_format = st.radio(
+                        "輸出格式",
+                        key="gemini_output_format",
+                        options=["純文字", "Markdown", "SRT (含時間戳)"],
+                        index=0,
+                        help=("純文字：標準轉錄文字；"
+                             "Markdown：結構化格式；"
+                             "SRT：字幕格式，含時間戳")
+                    )
+                    st.session_state["output_format"] = output_format
+
                 elif transcription_service == "ElevenLabs":
                     # ElevenLabs API 金鑰
                     elevenlabs_api_key = st.text_input(
@@ -1706,10 +1814,18 @@ def main():
             openai_api_key = st.session_state.get("openai_api_key", "")
             elevenlabs_api_key = st.session_state.get("elevenlabs_api_key", "")
             
-            if transcription_service == "OpenAI 2025 New" and not openai_api_key:
+            if transcription_service == "OpenAI" and not openai_api_key:
                 st.error("請提供 OpenAI API 金鑰")
                 return
                 
+            if transcription_service == "Gemini" and not (
+                st.session_state.get("gemini_transcribe_key")
+                or os.environ.get("GEMINI_API_KEY")
+                or os.environ.get("GOOGLE_API_KEY")
+            ):
+                st.error("請提供 Google API 金鑰（或設定 GEMINI_API_KEY 環境變數）")
+                return
+
             if transcription_service == "ElevenLabs" and not elevenlabs_api_key:
                 st.error("請提供 ElevenLabs API 金鑰")
                 return
@@ -1720,7 +1836,7 @@ def main():
                     full_transcript = ""
                     
                     # 初始化 OpenAI 客戶端（如果需要）
-                    if transcription_service == "OpenAI 2025 New":
+                    if transcription_service == "OpenAI":
                         openai_client = OpenAI(api_key=openai_api_key)
                     
                     # 處理音檔來源
@@ -1814,6 +1930,10 @@ def main():
                         
                         progress_bar = st.progress(0)
                         segment_results = []
+                        # Gemini 回傳的真實時間戳，累積起來直接產 SRT
+                        gemini_segments = []
+                        SEGMENT_SECONDS = 600
+                        OVERLAP_SECONDS = 30
                         
                         for i, segment_path in enumerate(audio_segments):
                             if transcription_service == "Whisper":
@@ -1823,6 +1943,38 @@ def main():
                                     language=language_code,
                                     initial_prompt=st.session_state["transcription_prompt"]
                                 )
+                            elif transcription_service == "Gemini":
+                                # Gemini 走 interactions 轉錄 API，回傳真實時間戳
+                                from gemini_transcribe import GeminiTranscriber
+
+                                kw = [k.strip() for k in
+                                      st.session_state.get("gemini_keywords", "").split(",")
+                                      if k.strip()]
+                                diarize = st.session_state.get("gemini_diarization", True)
+                                transcriber = GeminiTranscriber(
+                                    st.session_state.get("gemini_transcribe_key") or None
+                                )
+                                gem = transcriber.transcribe_file(
+                                    segment_path,
+                                    language=language_code,
+                                    keywords=kw or None,
+                                    diarization=diarize,
+                                    word_timestamps=True,
+                                )
+                                # 段落時間是相對於這個切片，補上整檔的位移
+                                offset = max(
+                                    0,
+                                    i * SEGMENT_SECONDS - OVERLAP_SECONDS if i > 0 else 0
+                                )
+                                for seg in gem.get("segments", []):
+                                    gemini_segments.append({
+                                        "start": seg["start"] + offset,
+                                        "end": seg["end"] + offset,
+                                        "text": seg["text"],
+                                    })
+                                result = gem.get("text", "")
+                                segment_results.append(result)
+
                             elif transcription_service == "ElevenLabs":
                                 result = transcribe_audio_elevenlabs(
                                     api_key=elevenlabs_api_key,
@@ -1830,7 +1982,7 @@ def main():
                                     language_code="zho",  # 指定中文
                                     diarize=False  # 取消啟用說話者辨識
                                 )
-                            elif transcription_service == "OpenAI 2025 New":
+                            elif transcription_service == "OpenAI":
                                 MAX_RETRIES = 3
                                 retry_count = 0
                                 failed = True
@@ -1931,12 +2083,15 @@ def main():
                         selected_format = st.session_state.get("output_format", "純文字")
                         
                         if selected_format == "SRT (含時間戳)":
-                            # 使用 JSON 回應生成 SRT
-                            full_transcript = generate_srt_from_json(
-                                segment_results,
-                                segment_duration=600,
-                                overlap_duration=30
-                            )
+                            if gemini_segments:
+                                # Gemini 給的是真實詞級時間戳，直接用，不必估算
+                                full_transcript = generate_srt_from_segments(gemini_segments)
+                            else:
+                                full_transcript = generate_srt_from_json(
+                                    segment_results,
+                                    segment_duration=SEGMENT_SECONDS,
+                                    overlap_duration=OVERLAP_SECONDS
+                                )
                         elif selected_format == "Markdown":
                             # 從結果中提取文字內容
                             text_parts = []
