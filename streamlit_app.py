@@ -63,7 +63,7 @@ def main():
         # 模型選擇
         model = st.selectbox(
             "選擇模型",
-            options=["gpt-4o-transcribe", "gpt-4o-mini-transcribe"],
+            options=["gpt-transcribe", "gemini-3.5-transcribe", "whisper-1"],
             index=0,
             help="選擇要使用的 GPT-4o 語音模型"
         )

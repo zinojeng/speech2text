@@ -3,8 +3,8 @@ gpt4o_transcribe.py
 
 此程式用於測試使用新的 GPT-4o 語音轉文字模型，
 提供兩種模型:
-- gpt-4o-transcribe
-- gpt-4o-mini-transcribe
+- gpt-transcribe
+- gpt-transcribe
 
 參考文件: https://platform.openai.com/docs/guides/speech-to-text
 
@@ -42,8 +42,8 @@ def main():
     parser.add_argument(
         "--model",
         type=str,
-        default="gpt-4o-transcribe",
-        help="選擇模型: gpt-4o-transcribe, gpt-4o-mini-transcribe"
+        default="gpt-transcribe",
+        help="選擇模型: gpt-transcribe, gemini-3.5-transcribe, whisper-1"
     )
     parser.add_argument(
         "--language",

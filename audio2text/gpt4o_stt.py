@@ -5,14 +5,14 @@ GPT-4o Speech-to-Text 模組
 
 from openai import OpenAI
 
-def transcribe_audio_gpt4o(file_path, api_key, model="gpt-4o-transcribe", language=None, output_format="text"):
+def transcribe_audio_gpt4o(file_path, api_key, model="gpt-transcribe", language=None, output_format="text"):
     """
     使用 GPT-4o 模型轉錄音頻
     
     Args:
         file_path: 音頻檔案路徑
         api_key: OpenAI API 金鑰
-        model: 模型名稱 (gpt-4o-transcribe 或 gpt-4o-mini-transcribe)
+        model: 模型名稱 (gpt-transcribe、gemini-3.5-transcribe 或 whisper-1)
         language: 語言代碼 (如 'zh', 'en', 'ja' 等)
         output_format: 輸出格式 ('text', 'srt', 'markdown')
     

@@ -14,10 +14,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 # Examples:
 # Individual SRT files per audio file
-./audio_auto.sh /path/to/audio/folder gpt-4o-mini-transcribe srt
+./audio_auto.sh /path/to/audio/folder gpt-transcribe srt
 
 # Combined SRT with continuous timestamps
-./audio_auto.sh /path/to/audio/folder gpt-4o-mini-transcribe srt --combined
+./audio_auto.sh /path/to/audio/folder gpt-transcribe srt --combined
 ```
 
 ### Virtual Environment Setup
@@ -40,10 +40,16 @@ GOOGLE_API_KEY=your_google_key
 ### Speech-to-Text Pipeline
 The system supports multiple STT backends with automatic fallback:
 
-1. **GPT-4o Models** (`gpt4o_transcribe.py`)
-   - `gpt-4o-transcribe` - Higher quality, more expensive
-   - `gpt-4o-mini-transcribe` - More economical, default choice
-   - Supports automatic file splitting for large audio files
+1. **OpenAI** (`gpt4o_transcribe.py`) - `gpt-transcribe`
+   - Best text accuracy; supports `keywords` term hints
+   - Returns no timestamps, so SRT timings are estimated
+   - Splits files over the 25MB API limit automatically
+
+1b. **Gemini** - `gemini-3.5-transcribe`
+   - The only backend with real word timestamps AND speaker labels (up to 8)
+   - `custom_vocabulary` cannot be combined with either; the three are
+     mutually exclusive and the API returns 400
+   - 1 hour per request, 30 minutes once timestamps or diarization are on
 
 2. **Whisper Integration** (`whisper_stt.py`)
    - Local processing option
@@ -69,8 +75,8 @@ python batch_audio_processor.py folder_path [model]
 ./audio_auto.sh [folder_path] [model] [format] [--combined]
 
 # Combined output examples:
-./audio_auto.sh /audio/folder gpt-4o-mini-transcribe srt --combined
-./audio_auto.sh /audio/folder gpt-4o-mini-transcribe markdown --combined
+./audio_auto.sh /audio/folder gpt-transcribe srt --combined
+./audio_auto.sh /audio/folder gpt-transcribe markdown --combined
 ```
 
 Key features:
@@ -102,7 +108,7 @@ source venv_app/bin/activate && python app.py
 ### Individual File Processing
 ```bash
 # Direct transcription with GPT-4o
-python gpt4o_transcribe.py audio.mp3 --model gpt-4o-mini-transcribe
+python gpt4o_transcribe.py audio.mp3 --model gpt-transcribe
 
 # Document conversion
 python -c "from markitdown_utils import convert_file_to_markdown; print(convert_file_to_markdown('file.pdf'))"
@@ -164,13 +170,48 @@ streamlit run main_app.py --server.address 0.0.0.0 --server.port 8501
 
 ## Model Selection Strategy
 
-Default model hierarchy:
-1. `gpt-4o-mini-transcribe` (cost-effective, good quality)
-2. `gpt-4o-transcribe` (premium quality)
-3. Local Whisper (quota exhaustion fallback)
-4. ElevenLabs (premium features like diarization)
+**All model IDs live in `model_config.py`.** Change models there, not in
+individual tools — they import role constants (`OPENAI_REFINE`, `GEMINI_REFINE`,
+`OPENAI_TRANSCRIBE`, …) rather than hardcoding strings. `MODEL_PRICING` in the
+same file feeds the cost estimates in `utils.py`, `main_app.py` and the UI, so
+prices are updated in one place too.
 
-Cost considerations built into `utils.py` with token counting and price estimation per model.
+Verify against the live API rather than trusting docs or this file:
+
+```bash
+python -c "from openai import OpenAI; print([m.id for m in OpenAI().models.list()])"
+python -c "from google import genai; print([m.name for m in genai.Client().models.list()])"
+```
+
+Transcription: pick by what you need, not by price — the two cost nearly the same.
+
+| | Text accuracy | Timestamps | Speaker labels |
+|---|---|---|---|
+| `gpt-transcribe` | best | estimated | no |
+| `gemini-3.5-transcribe` | middle | real, word-level | yes |
+| `whisper-1` | worst | real, segment | no |
+
+Fallbacks: local Whisper on quota exhaustion, ElevenLabs for premium features.
+
+### Model gotchas
+
+- **All Gemini calls go through `google-genai`** via `gemini_client.GeminiTextModel`.
+  The old `google.generativeai` package has ended support and is out of
+  `requirements.txt`; do not reintroduce it.
+- **Gemini 3.x rejects `temperature` / `top_p` / `top_k`** with a 400.
+  `GeminiTextModel` strips them and warns.
+- **Transcription models cannot generate text.** Use the refine/notes roles for
+  summarisation and translation.
+- `upgrade_legacy_model()` maps retired IDs (`o1-mini`, `o3-mini`, `o4-mini`,
+  `gpt-3.5-turbo`, `gpt-4-vision-preview`, `gemini-2.0-flash-exp`,
+  `gemini-2.5-pro-preview-06-05`, …) forward, so old configs keep working.
+
+### Known broken files
+
+- `new_main_app.py` — orphaned and has ~26 lines of corrupted indentation; it
+  cannot be parsed. Nothing imports it and the Docker entrypoint is
+  `main_app.py`. Left untouched pending a decision to fix or delete.
+- `optimized_srt_processor.py` — pre-existing IndentationError at line 86.
 
 ## Troubleshooting
 

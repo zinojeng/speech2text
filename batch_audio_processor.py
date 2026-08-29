@@ -27,7 +27,6 @@ from pathlib import Path
 from typing import List, Dict, Optional
 from dotenv import load_dotenv
 from openai import OpenAI
-import google.generativeai as genai
 from docx import Document
 from docx.enum.text import WD_PARAGRAPH_ALIGNMENT
 import re
@@ -37,6 +36,8 @@ import time
 from utils import split_large_audio, check_file_size
 from audio2text.gpt4o_stt import transcribe_audio_gpt4o
 from pydub import AudioSegment
+from gemini_client import GeminiTextModel
+from model_config import GEMINI_REFINE
 
 # 載入環境變數
 load_dotenv()
@@ -75,12 +76,12 @@ rewrite or 順暢演講者內容，100%儘可能完整呈現，加入一些粗�
 class BatchAudioProcessor:
     """批次音訊處理器"""
     
-    def __init__(self, model="gpt-4o-mini-transcribe", output_format="text"):
+    def __init__(self, model="gpt-transcribe", output_format="text"):
         """
         初始化處理器
         
         Args:
-            model: 使用的轉錄模型 (gpt-4o-transcribe 或 gpt-4o-mini-transcribe)
+            model: 使用的轉錄模型 (gpt-transcribe、gemini-3.5-transcribe 或 whisper-1)
             output_format: 輸出格式 (text, markdown, srt)
         """
         self.openai_client = None
@@ -103,7 +104,6 @@ class BatchAudioProcessor:
         if not google_key:
             raise ValueError("請在 .env 檔案中設定 GOOGLE_API_KEY")
 
-        genai.configure(api_key=google_key)
         logger.info("Google Gemini API 設定完成")
     
     def get_folder_path(self) -> str:
@@ -360,7 +360,7 @@ class BatchAudioProcessor:
             logger.info("開始使用 Gemini 2.5 Pro 進行摘要處理")
 
             # 建立模型
-            model = genai.GenerativeModel('gemini-2.5-pro')
+            model = GeminiTextModel(GEMINI_REFINE, api_key=google_key)
 
             # 構建提示詞
             user_prompt = f"""請根據以下轉錄內容進行摘要處理：
@@ -623,8 +623,8 @@ def main():
     """主函數"""
     try:
         # 檢查命令行參數中是否指定模型
-        model = "gpt-4o-mini-transcribe"  # 預設使用 mini 版本
-        if len(sys.argv) > 2 and sys.argv[2] in ["gpt-4o-transcribe", "gpt-4o-mini-transcribe"]:
+        model = "gpt-transcribe"  # 預設使用 mini 版本
+        if len(sys.argv) > 2 and sys.argv[2] in ["gpt-transcribe", "gemini-3.5-transcribe", "whisper-1"]:
             model = sys.argv[2]
         
         print(f"🤖 使用轉錄模型: {model}")

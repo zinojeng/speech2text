@@ -4,6 +4,12 @@ from pydub import AudioSegment
 import math
 import logging
 import tiktoken
+from model_config import (
+    MODEL_PRICING,
+    OPENAI_REASONING,
+    OPENAI_REFINE,
+    OPENAI_REFINE_CHEAP,
+)
 
 # 設定日誌
 logging.basicConfig(level=logging.INFO)
@@ -13,28 +19,24 @@ logger = logging.getLogger(__name__)
 MAX_FILE_SIZE_MB = 25  # ElevenLabs 的檔案大小限制
 SEGMENT_LENGTH_MS = 300000  # 5 分鐘，單位為毫秒
 
-# OpenAI 模型定義
+# OpenAI 模型定義（實際模型 id 見 model_config.py）
 OPENAI_MODELS = {
-    "gpt-4o": "GPT-4o",
-    "gpt-4o-mini": "GPT-4o-mini",
-    "o1-mini": "o1-mini",
-    "o3-mini": "o3-mini",
-    "gpt-3.5-turbo": "GPT-3.5 Turbo"
+    OPENAI_REFINE: "GPT-5.6 Terra（品質優先）",
+    OPENAI_REFINE_CHEAP: "GPT-5.6 Luna（省錢／量大）",
+    OPENAI_REASONING: "GPT-5.6 Sol（最強推理）",
 }
 
-# 模型價格定義（每千tokens的USD價格）
+# 模型價格定義（每千 tokens 的 USD 價格）
+# model_config.MODEL_PRICING 記的是每 1M tokens，這裡換算成每 1K。
 MODEL_PRICES = {
-    "gpt-4o": {"input": 0.01, "output": 0.03},
-    "gpt-4o-mini": {"input": 0.00155, "output": 0.00655},
-    "o1-mini": {"input": 0.00155, "output": 0.00655},
-    "o3-mini": {"input": 0.00155, "output": 0.00655},
-    "gpt-3.5-turbo": {"input": 0.0005, "output": 0.0015}
+    model: {"input": price["input"] / 1000, "output": price["output"] / 1000}
+    for model, price in MODEL_PRICING.items()
 }
 
 def calculate_tokens_and_cost(
     original_text: str,
     refined_text: str,
-    model: str = "gpt-3.5-turbo"
+    model: str = OPENAI_REFINE_CHEAP
 ) -> Tuple[str, str]:
     """
     計算處理文字消耗的 tokens 和成本

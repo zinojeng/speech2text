@@ -20,7 +20,6 @@ import re
 import logging
 from pathlib import Path
 from typing import Optional, Tuple, List, Dict
-import google.generativeai as genai
 from docx import Document
 from docx.enum.text import WD_PARAGRAPH_ALIGNMENT
 from docx.shared import Inches
@@ -28,6 +27,8 @@ from datetime import datetime
 import json
 import glob
 from dotenv import load_dotenv
+from gemini_client import GeminiTextModel
+from model_config import GEMINI_REFINE
 
 # 載入環境變數
 load_dotenv()
@@ -123,7 +124,6 @@ class TranscriptSlidesProcessor:
     def setup_api(self):
         """設定 Google Gemini API"""
         try:
-            genai.configure(api_key=GOOGLE_API_KEY)
             logger.info("Google Gemini API 設定完成")
         except Exception as e:
             logger.error(f"API 設定失敗: {e}")
@@ -251,7 +251,7 @@ class TranscriptSlidesProcessor:
             logger.info("開始使用 Gemini-2.5-pro 進行內容整合")
             
             # 建立模型
-            model = genai.GenerativeModel('gemini-2.5-pro')
+            model = GeminiTextModel(GEMINI_REFINE, api_key=GOOGLE_API_KEY)
             
             # 載入圖片資訊
             image_info = ""

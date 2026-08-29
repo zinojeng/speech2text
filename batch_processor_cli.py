@@ -30,7 +30,7 @@ import tempfile
 import shutil
 
 class BatchProcessor:
-    def __init__(self, model="gpt-4o-mini-transcribe", output_format="markdown", max_workers=2):
+    def __init__(self, model="gpt-transcribe", output_format="markdown", max_workers=2):
         self.model = model
         self.output_format = output_format
         self.max_workers = max_workers
@@ -289,7 +289,7 @@ Examples:
   python batch_processor_cli.py /path/to/audio/folder
   
   # With custom model and format
-  python batch_processor_cli.py folder/ --model gpt-4o-transcribe --format srt
+  python batch_processor_cli.py folder/ --model gpt-transcribe --format srt
   
   # With summary generation
   python batch_processor_cli.py folder/ --summary "Provide key points from this meeting"
@@ -300,9 +300,9 @@ Examples:
     )
     
     parser.add_argument('input', help='Audio file or directory path')
-    parser.add_argument('--model', default='gpt-4o-mini-transcribe',
-                        choices=['gpt-4o-transcribe', 'gpt-4o-mini-transcribe'],
-                        help='Transcription model (default: gpt-4o-mini-transcribe)')
+    parser.add_argument('--model', default='gpt-transcribe',
+                        choices=['gpt-transcribe', 'gemini-3.5-transcribe', 'whisper-1'],
+                        help='Transcription model (default: gpt-transcribe)')
     parser.add_argument('--format', default='text',
                         choices=['text', 'srt', 'markdown'],
                         help='Output format (default: text)')

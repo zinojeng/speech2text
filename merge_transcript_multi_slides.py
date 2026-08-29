@@ -27,7 +27,6 @@ import re
 import logging
 from pathlib import Path
 from typing import Optional, Tuple, List, Dict
-import google.generativeai as genai
 from docx import Document
 from docx.enum.text import WD_PARAGRAPH_ALIGNMENT
 from docx.shared import Inches
@@ -35,6 +34,8 @@ from datetime import datetime
 import json
 import glob
 from dotenv import load_dotenv
+from gemini_client import GeminiTextModel
+from model_config import GEMINI_REFINE
 
 # 載入環境變數
 load_dotenv()
@@ -130,7 +131,6 @@ class MultiSlidesProcessor:
         try:
             if not GOOGLE_API_KEY:
                 raise ValueError("請在 .env 檔案中設定 GOOGLE_API_KEY")
-            genai.configure(api_key=GOOGLE_API_KEY)
             logger.info("Google Gemini API 設定完成")
         except Exception as e:
             logger.error(f"API 設定失敗: {e}")
@@ -293,7 +293,7 @@ class MultiSlidesProcessor:
             logger.info("開始使用 Gemini-2.5-pro 進行內容整合")
             
             # 建立模型
-            model = genai.GenerativeModel('gemini-2.5-pro')
+            model = GeminiTextModel(GEMINI_REFINE, api_key=GOOGLE_API_KEY)
             
             # 構建投影片內容部分
             slides_text = ""

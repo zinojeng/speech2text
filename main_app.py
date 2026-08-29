@@ -11,7 +11,6 @@ import subprocess
 import streamlit as st
 from dotenv import load_dotenv
 from openai import OpenAI
-import google.generativeai as genai
 from pydub import AudioSegment
 
 # 本地模組導入
@@ -33,79 +32,49 @@ load_dotenv()
 
 # 設定日誌
 logging.basicConfig(level=logging.INFO)
+from gemini_client import GeminiTextModel
+from model_config import (
+    GEMINI_REFINE,
+    GEMINI_REFINE_CHEAP,
+    GEMINI_TRANSCRIBE,
+    MODEL_PRICING,
+    GEMINI_REASONING,
+    OPENAI_REASONING,
+    OPENAI_REFINE,
+    OPENAI_REFINE_CHEAP,
+    OPENAI_TIMESTAMP_TRANSCRIBE,
+    OPENAI_TRANSCRIBE,
+    OPENAI_VISION,
+)
+
 logger = logging.getLogger(__name__)
 
-# 定義可用的 OpenAI 模型
+# 可用模型（實際 id 與價格集中在 model_config.py）
 AVAILABLE_MODELS = {
-    "o4-mini": "o4-mini",  # 新模型放前面作為預設
-    "gpt-4o": "gpt-4o",
-    "gpt-4o-mini": "gpt-4o-mini",
-    "o3-mini": "o3-mini",
-    "o1-mini": "o1-mini"
+    OPENAI_REFINE: OPENAI_REFINE,
+    OPENAI_REFINE_CHEAP: OPENAI_REFINE_CHEAP,
+    OPENAI_REASONING: OPENAI_REASONING,
+    GEMINI_REFINE: GEMINI_REFINE,
+    GEMINI_REFINE_CHEAP: GEMINI_REFINE_CHEAP,
 }
 
-# 模型設定和價格（USD per 1M tokens）
+_DISPLAY_NAMES = {
+    OPENAI_REFINE: "GPT-5.6 Terra（品質優先）",
+    OPENAI_REFINE_CHEAP: "GPT-5.6 Luna（省錢／量大）",
+    OPENAI_REASONING: "GPT-5.6 Sol（最強推理）",
+    GEMINI_REFINE: "Gemini 3.7 Flash",
+    GEMINI_REFINE_CHEAP: "Gemini 3.5 Flash-Lite（最便宜）",
+}
+
+# 模型設定和價格（USD per 1M tokens），價格來源見 model_config.MODEL_PRICING
 MODEL_CONFIG = {
-    "o4-mini": {
-        "display_name": "o4-mini",
-        "input": 0.15,          # $0.15 per 1M tokens
-        "cached_input": 0.075,  # $0.075 per 1M tokens
-        "output": 0.60          # $0.60 per 1M tokens
-    },
-    "gpt-4o": {
-        "display_name": "gpt-4o",
-        "input": 2.50,          # $2.50 per 1M tokens
-        "cached_input": 1.25,   # $1.25 per 1M tokens
-        "output": 10.00         # $10.00 per 1M tokens
-    },
-    "gpt-4o-mini": {
-        "display_name": "gpt-4o-mini",
-        "input": 0.15,          # $0.15 per 1M tokens
-        "cached_input": 0.075,  # $0.075 per 1M tokens
-        "output": 0.60          # $0.60 per 1M tokens
-    },
-    "o1-mini": {
-        "display_name": "o1-mini",
-        "input": 1.10,          # $1.10 per 1M tokens
-        "cached_input": 0.55,   # $0.55 per 1M tokens
-        "output": 4.40          # $4.40 per 1M tokens
-    },
-    "o3-mini": {
-        "display_name": "o3-mini",
-        "input": 1.10,          # $1.10 per 1M tokens
-        "cached_input": 0.55,   # $0.55 per 1M tokens
-        "output": 4.40          # $4.40 per 1M tokens
-    },
-    "gemini-3-pro-preview": {
-        "display_name": "Gemini 3 Pro Preview",
-        "input": 0.00,          # 價格待定
-        "cached_input": 0.00,   # 價格待定
-        "output": 0.00          # 價格待定
-    },
-    "gemini-3-flash-preview": {
-        "display_name": "Gemini 3 Flash Preview",
-        "input": 0.00,          # 價格待定
-        "cached_input": 0.00,   # 價格待定
-        "output": 0.00          # 價格待定
-    },
-    "gemini-2.5-pro": {
-        "display_name": "Gemini 2.5 Pro",
-        "input": 0.00,          # 價格待定
-        "cached_input": 0.00,   # 價格待定
-        "output": 0.00          # 價格待定
-    },
-    "gemini-2.5-flash": {
-        "display_name": "Gemini 2.5 Flash",
-        "input": 0.00,          # 價格待定
-        "cached_input": 0.00,   # 價格待定
-        "output": 0.00          # 價格待定
-    },
-    "gemini-2.0-flash": {
-        "display_name": "Gemini 2.0 Flash",
-        "input": 0.00,          # 價格待定
-        "cached_input": 0.00,   # 價格待定
-        "output": 0.00          # 價格待定
+    model: {
+        "display_name": _DISPLAY_NAMES.get(model, model),
+        "input": price["input"],
+        "cached_input": price.get("cached_input", 0.0),
+        "output": price["output"],
     }
+    for model, price in MODEL_PRICING.items()
 }
 
 # 匯率設定
@@ -125,12 +94,12 @@ TRANSCRIPTION_SERVICE_INFO = {
     - 支援 99 種語言
     - 提供說話者辨識功能
     """,
-    "OpenAI 2025 New": """
-    ### OpenAI 2025 全新模型
-    - gpt-4o-transcribe：高精度、多語言支援
-    - gpt-4o-mini-transcribe：輕量快速、性價比高
-    - 自動語言檢測
-    - 更好的中文轉錄效果
+    "OpenAI 2025 New": f"""
+    ### OpenAI 現行轉錄模型
+    - {OPENAI_TRANSCRIBE}：文字準確度最好，自動語言偵測
+    - 支援 keywords 專有名詞提示（藥名、縮寫）
+    - 不回傳時間戳，SRT 時間軸為估算值
+    - 需要真實時間戳請改用 {GEMINI_TRANSCRIBE} 或 {OPENAI_TIMESTAMP_TRANSCRIBE}
     """
 }
 
@@ -571,10 +540,9 @@ def refine_transcript_gemini(text, api_key, temperature=0.5, context=""):
         dict: 包含優化後的文字和摘要
     """
     try:
-        genai.configure(api_key=api_key)
         # 使用 session_state 中選擇的模型，如果未設置則使用預設值
-        model_name = st.session_state.get("gemini_model", "gemini-2.5-pro")
-        model = genai.GenerativeModel(model_name)
+        model_name = st.session_state.get("gemini_model", GEMINI_REFINE)
+        model = GeminiTextModel(model_name, api_key=api_key)
         
         # 準備提示詞
         prompt = f"""
@@ -901,7 +869,7 @@ def render_markitdown_tab():
                                             input_path=temp_path,
                                             use_llm=use_vision_api,
                                             api_key=openai_api_key,
-                                            model="gpt-4o"  # Vision API 需要 gpt-4o 模型
+                                            model=OPENAI_VISION  # 視覺分析
                                         )
                                     )
                                     
@@ -975,7 +943,7 @@ def render_markitdown_tab():
                                             result = analyze_image(
                                                 temp_path, 
                                                 openai_api_key, 
-                                                "o4-mini"  # 使用o4-mini模型
+                                                OPENAI_REFINE_CHEAP
                                             )
                                         
                                         if result["success"]:
@@ -1123,7 +1091,7 @@ def render_markitdown_tab():
             with col1:
                 model_for_keywords = st.selectbox(
                     "選擇模型",
-                    ["gpt-4o", "gpt-4o-mini"],
+                    [OPENAI_REFINE, OPENAI_REFINE_CHEAP],
                     index=1,
                     help="選擇用於提取關鍵詞的模型"
                 )
@@ -1237,7 +1205,7 @@ def render_markitdown_tab():
             # 模型選擇
             slide_model = st.selectbox(
                 "選擇模型",
-                ["gpt-4o", "gpt-4o-mini"],
+                [OPENAI_REFINE, OPENAI_REFINE_CHEAP],
                 index=1,
                 help="選擇用於幻燈片增強的模型"
             )
@@ -1356,11 +1324,11 @@ def main():
     if "use_llm" not in st.session_state:
         st.session_state["use_llm"] = False
     if "openai_model" not in st.session_state:
-        st.session_state["openai_model"] = "o4-mini-transcribe"
+        st.session_state["openai_model"] = OPENAI_TRANSCRIBE
     if "keyword_count" not in st.session_state:
         st.session_state["keyword_count"] = 10
     if "optimization_model" not in st.session_state:
-        st.session_state["optimization_model"] = "o4-mini"
+        st.session_state["optimization_model"] = OPENAI_REFINE_CHEAP
 
     # 創建主要的功能標籤頁，添加步驟編號
     tabs_titles = [
@@ -1415,10 +1383,13 @@ def main():
                     # 允許用戶選擇轉錄模型
                     transcribe_model = st.radio(
                         "選擇轉錄模型",
-                        options=["gpt-4o-transcribe", "gpt-4o-mini-transcribe"],
+                        options=[OPENAI_TRANSCRIBE, GEMINI_TRANSCRIBE, OPENAI_TIMESTAMP_TRANSCRIBE],
                         index=1,  # 預設使用mini版本
-                        help=("gpt-4o-transcribe：高精度、多語言支援；"
-                             "gpt-4o-mini-transcribe：輕量快速、性價比高")
+                        help=(
+                            f"{OPENAI_TRANSCRIBE}：文字準確度最好，但不回傳時間戳；"
+                            f"{GEMINI_TRANSCRIBE}：唯一同時有講者標記與詞級時間戳；"
+                            f"{OPENAI_TIMESTAMP_TRANSCRIBE}：OpenAI 唯一有真時間戳，中文較差"
+                        )
                     )
                     st.session_state["openai_model"] = transcribe_model
                     
@@ -1550,14 +1521,12 @@ def main():
                     gemini_model = st.radio(
                         "選擇 Gemini 模型",
                         options=[
-                            "gemini-3-pro-preview",
-                            "gemini-3-flash-preview",
-                            "gemini-2.5-pro", 
-                            "gemini-2.5-flash",
-                            "gemini-2.0-flash"
+                            GEMINI_REFINE,
+                            GEMINI_REFINE_CHEAP,
+                            GEMINI_REASONING,
                         ],
                         index=0,
-                        help="Gemini 3 系列最強大，2.5 系列穩定，Flash 版本速度更快"
+                        help="Flash 平衡品質與成本，Flash-Lite 最便宜，Pro 推理最強"
                     )
                     st.session_state["gemini_model"] = gemini_model
                     
@@ -1575,8 +1544,8 @@ def main():
                     st.session_state["openai_api_key"] = openai_api_key
                     
                     # 顯示模型資訊
-                    st.info("使用 o4-mini 模型進行優化，擁有更快速度和更低成本")
-                    st.session_state["optimization_model"] = "o4-mini"
+                    st.info(f"使用 {OPENAI_REFINE_CHEAP} 進行優化，速度快、成本低")
+                    st.session_state["optimization_model"] = OPENAI_REFINE_CHEAP
                 
                 # 優化提示 (增加文字優化效果)
                 st.markdown("### 優化提示設定")
@@ -1865,7 +1834,7 @@ def main():
                                     try:
                                         with open(segment_path, "rb") as audio_file:
                                             # GPT-4o 模型只支援 text 和 json 格式
-                                            # 根據官方文件，gpt-4o-transcribe 只支援 json 和 text
+                                            # 根據官方文件，gpt-transcribe 只支援 json 和 text
                                             selected_format = st.session_state.get("output_format", "純文字")
                                             if selected_format == "SRT (含時間戳)":
                                                 api_format = "json"  # 使用 json 嘗試獲取時間信息

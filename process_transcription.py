@@ -19,11 +19,12 @@ import re
 import logging
 from pathlib import Path
 from typing import Optional
-import google.generativeai as genai
 from docx import Document
 from docx.enum.text import WD_PARAGRAPH_ALIGNMENT
 from datetime import datetime
 from dotenv import load_dotenv
+from gemini_client import GeminiTextModel
+from model_config import GEMINI_REFINE
 
 # 載入環境變數
 load_dotenv()
@@ -79,7 +80,6 @@ class TranscriptionProcessor:
     def setup_api(self):
         """設定 Google Gemini API"""
         try:
-            genai.configure(api_key=GOOGLE_API_KEY)
             logger.info("Google Gemini API 設定完成")
         except Exception as e:
             logger.error(f"API 設定失敗: {e}")
@@ -128,7 +128,7 @@ class TranscriptionProcessor:
             logger.info("開始使用 Gemini-2.5-pro 進行摘要處理")
             
             # 建立模型
-            model = genai.GenerativeModel('gemini-2.5-pro')
+            model = GeminiTextModel(GEMINI_REFINE, api_key=GOOGLE_API_KEY)
             
             # 構建提示詞
             user_prompt = f"""請根據以下轉錄內容生成詳細的會議筆記：

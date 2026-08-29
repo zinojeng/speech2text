@@ -71,7 +71,7 @@ def find_audio_files(directory):
     
     return sorted(audio_files)
 
-def process_single_file(file_path, model="gpt-4o-mini-transcribe", summary_prompt=None, max_retries=3, has_gemini=True):
+def process_single_file(file_path, model="gpt-transcribe", summary_prompt=None, max_retries=3, has_gemini=True):
     """Process a single audio file through transcription and summarization with retry logic"""
     result = {
         'file_path': file_path,
@@ -285,7 +285,7 @@ with col1:
     
     model = st.selectbox(
         "Select transcription model:",
-        ["gpt-4o-mini-transcribe", "gpt-4o-transcribe"],
+        ["gpt-transcribe", "gemini-3.5-transcribe", "whisper-1"],
         index=0
     )
     

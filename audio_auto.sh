@@ -174,8 +174,8 @@ show_usage() {
     echo "  ./audio_auto.sh [資料夾路徑] [模型] [輸出格式] [--combined]"
     echo ""
     echo -e "${BLUE}🤖 支援的轉錄模型:${NC}"
-    echo "  gpt-4o-mini-transcribe (預設，更經濟)"
-    echo "  gpt-4o-transcribe (更高品質，較昂貴)"
+    echo "  gpt-transcribe (預設，更經濟)"
+    echo "  gpt-transcribe (更高品質，較昂貴)"
     echo ""
     echo -e "${BLUE}📝 支援的輸出格式:${NC}"
     echo "  text (純文字 .txt)"
@@ -224,22 +224,22 @@ get_folder_path() {
 get_transcribe_model() {
     if [ "$1" != "" ]; then
         MODEL="$1"
-        if [ "$MODEL" != "gpt-4o-transcribe" ] && [ "$MODEL" != "gpt-4o-mini-transcribe" ]; then
-            echo -e "${YELLOW}⚠️  無效的模型名稱，使用預設模型: gpt-4o-mini-transcribe${NC}"
-            MODEL="gpt-4o-mini-transcribe"
+        if [ "$MODEL" != "gpt-transcribe" ] && [ "$MODEL" != "gemini-3.5-transcribe" ] && [ "$MODEL" != "whisper-1" ]; then
+            echo -e "${YELLOW}⚠️  無效的模型名稱，使用預設模型: gpt-transcribe${NC}"
+            MODEL="gpt-transcribe"
         fi
     else
         echo -e "${BLUE}🤖 選擇轉錄模型:${NC}"
-        echo "  1) gpt-4o-mini-transcribe (預設，更經濟)"
-        echo "  2) gpt-4o-transcribe (更高品質，較昂貴)"
+        echo "  1) gpt-transcribe (預設，更經濟)"
+        echo "  2) gpt-transcribe (更高品質，較昂貴)"
         read -p "請選擇 (1-2，預設為1): " choice
         
         case $choice in
             2)
-                MODEL="gpt-4o-transcribe"
+                MODEL="gpt-transcribe"
                 ;;
             *)
-                MODEL="gpt-4o-mini-transcribe"
+                MODEL="gpt-transcribe"
                 ;;
         esac
     fi

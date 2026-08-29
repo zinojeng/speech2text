@@ -121,9 +121,9 @@ with gr.Blocks() as demo:
             )
             
             gpt4o_model = gr.Dropdown(
-                choices=["gpt-4o-transcribe", "gpt-4o-mini-transcribe"],
+                choices=["gpt-transcribe", "gemini-3.5-transcribe", "whisper-1"],
                 label="選擇 GPT-4o 語音模型（僅限 GPT-4o 服務）",
-                value="gpt-4o-transcribe",
+                value="gpt-transcribe",
                 visible=False
             )
             
